@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AnonymizerApi } from '../shared/ipc'
+import type { AnonymoApi } from '../shared/ipc'
 import type { ProgressEvent } from '../shared/entities'
 
-const api: AnonymizerApi = {
+const api: AnonymoApi = {
   pickFiles: () => ipcRenderer.invoke('pick-files'),
   pickOutputDir: () => ipcRenderer.invoke('pick-output-dir'),
   pathForFile: (file) => webUtils.getPathForFile(file),
@@ -20,4 +20,4 @@ const api: AnonymizerApi = {
   version: __APP_VERSION__
 }
 
-contextBridge.exposeInMainWorld('anonymizer', api)
+contextBridge.exposeInMainWorld('anonymo', api)

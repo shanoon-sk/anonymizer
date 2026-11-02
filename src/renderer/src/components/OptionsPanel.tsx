@@ -119,7 +119,7 @@ export function OutputLocation({ value, onChange, disabled }: PanelProps) {
             className="shrink-0 cursor-pointer text-[12px] font-medium text-primary hover:underline disabled:opacity-50"
             onClick={async () => {
               if (value.outDir) return onChange({ ...value, outDir: null })
-              const dir = await window.anonymizer.pickOutputDir()
+              const dir = await window.anonymo.pickOutputDir()
               if (dir) onChange({ ...value, outDir: dir })
             }}
           >

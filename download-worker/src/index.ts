@@ -1,4 +1,4 @@
-// Download server for Anonymizer by Shanoon: serves installers from the R2 bucket via Cloudflare's edge.
+// Download server for Anonymo: serves installers from the R2 bucket via Cloudflare's edge.
 // Routes:  /            → download page (Slovak)
 //          /windows     → latest Windows installer
 //          /mac         → latest macOS (Apple Silicon) installer
@@ -11,8 +11,8 @@ interface Env {
 // Bump on each release (files are uploaded to R2 under v<version>/).
 const VERSION = '0.1.0'
 const FILES = {
-  windows: `v${VERSION}/Anonymizer-Shanoon-Setup-${VERSION}.exe`,
-  mac: `v${VERSION}/Anonymizer-Shanoon-${VERSION}-arm64.dmg`,
+  windows: `v${VERSION}/Anonymo-Setup-${VERSION}.exe`,
+  mac: `v${VERSION}/Anonymo-${VERSION}-arm64.dmg`,
   sums: `v${VERSION}/SHA256SUMS.txt`
 }
 
@@ -78,11 +78,11 @@ async function page(req: Request, env: Env): Promise<Response> {
   const sumsText = sums ? await sums.text() : ''
   const html = `<!doctype html>
 <html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Anonymizer by Shanoon – stiahnuť</title>
+<title>Anonymo – stiahnuť</title>
 <meta name="description" content="Offline anonymizácia PDF, Word a Excel dokumentov pred vložením do ChatGPT alebo Claude.">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 ${STYLE}</head><body><div class="wrap">
-<header>${ICON}<div><h1>Anonymizer</h1><p>by Shanoon</p></div></header>
+<header>${ICON}<div><h1>Anonymo</h1><p>by Shanoon</p></div></header>
 <span class="badge">100 % offline · verzia ${VERSION}</span>
 <p class="lead">Anonymizujte dokumenty pred vložením do ChatGPT alebo Claude.</p>
 <p class="sub">PDF, Word a Excel. Mená, rodné čísla, IČO, IBAN, adresy a ďalšie údaje nahradí značkami ako [OSOBA_1]. Všetko prebieha na vašom počítači, žiadne dáta sa neodosielajú.</p>
@@ -131,14 +131,14 @@ footer a{color:var(--ink);font-weight:600;text-decoration:none}footer a:hover{co
 function privacy(req: Request): Response {
   const html = `<!doctype html>
 <html lang="sk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ochrana súkromia – Anonymizer by Shanoon</title>
+<title>Ochrana súkromia – Anonymo</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 ${STYLE}
 <style>.doc h2{color:var(--ink);font-size:17px;margin:28px 0 6px}.doc p,.doc li{max-width:640px}.doc ul{padding-left:20px}</style>
 </head><body><div class="wrap doc">
-<header>${ICON}<div><h1>Anonymizer</h1><p>by Shanoon</p></div></header>
+<header>${ICON}<div><h1>Anonymo</h1><p>by Shanoon</p></div></header>
 <p class="lead">Zásady ochrany súkromia</p>
-<p class="sub">Platné od 2. 11. 2026 pre aplikáciu Anonymizer by Shanoon (Windows, macOS).</p>
+<p class="sub">Platné od 2. 11. 2026 pre aplikáciu Anonymo (Windows, macOS).</p>
 
 <h2>Stručne</h2>
 <p>Aplikácia spracúva vaše dokumenty výlučne na vašom počítači. Žiadne dokumenty, ich obsah ani nájdené údaje sa nikam neodosielajú a aplikácia neobsahuje žiadnu analytiku, telemetriu ani reklamu.</p>

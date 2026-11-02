@@ -1,12 +1,12 @@
 # Microsoft Store – podklady pre zápis (sk-SK)
 
 ## Základné údaje
-- **Názov aplikácie (rezervovať v Partner Center):** Anonymizer by Shanoon
+- **Názov aplikácie (rezervovať v Partner Center):** Anonymo
 - **Kategória:** Podnikanie (Business) · podkategória: Účtovníctvo a financie
 - **Cena:** Zadarmo
 - **Dostupnosť:** Slovensko, Česko (prípadne všetky trhy)
 - **Vekové hodnotenie (IARC dotazník):** bez rizikového obsahu → 3+
-- **Zásady ochrany súkromia (URL):** https://anonymizer-download.shanoon.workers.dev/sukromie
+- **Zásady ochrany súkromia (URL):** https://anonymo.shanoon.workers.dev/sukromie
 - **Web:** https://shanoon.sk
 - **Kontakt podpory:** info@shanoon.sk
 - **Vyhlásenie o oprávneniach (runFullTrust):** Aplikácia potrebuje čítať a zapisovať súbory, ktoré používateľ vyberie (PDF, Word, Excel), a ukladať anonymizované kópie do zvoleného priečinka. Nekomunikuje so sieťou.
@@ -15,7 +15,7 @@
 Offline anonymizácia PDF, Word a Excel pred vložením do ChatGPT alebo Claude.
 
 ## Popis
-Chcete využiť ChatGPT alebo Claude pri práci s dokumentmi klientov, ale nesmiete do nich vkladať osobné údaje? Anonymizer by Shanoon ich za vás nájde a nahradí – priamo vo vašom počítači, bez internetu.
+Chcete využiť ChatGPT alebo Claude pri práci s dokumentmi klientov, ale nesmiete do nich vkladať osobné údaje? Anonymo ich za vás nájde a nahradí – priamo vo vašom počítači, bez internetu.
 
 Pretiahnite do aplikácie PDF, Word alebo Excel súbory, zaškrtnite, čo chcete skryť, a kliknite na Anonymizovať. Aplikácia vytvorí kópie dokumentov, v ktorých sú citlivé údaje nahradené značkami ako [OSOBA_1], [IBAN_1] alebo [ICO_1]. Rovnaká osoba alebo firma dostane vo všetkých dokumentoch rovnakú značku – aj v rôznych pádoch (Novák, Nováka, Novákovi) – takže AI stále rozumie, kto je kto.
 

@@ -1,4 +1,4 @@
-# Anonymizer by Shanoon
+# Anonymo
 
 Desktop app (Windows, macOS, Linux) that anonymizes **PDF, Word (.docx) and Excel (.xlsx)** files
 before an accountant pastes them into ChatGPT or Claude. Drag & drop, tick what to hide, click
@@ -58,8 +58,8 @@ available to users.
 
 ## Distribution (Cloudflare)
 
-Installers live in the R2 bucket `anonymizer-shanoon` under `v<version>/` and are served by the Worker in
-`download-worker/` at https://anonymizer-download.shanoon.workers.dev (download page, `/windows`, `/mac`,
+Installers live in the R2 bucket `anonymo` under `v<version>/` and are served by the Worker in
+`download-worker/` at https://anonymo.shanoon.workers.dev (download page, `/windows`, `/mac`,
 resumable downloads, edge-cached). Free tier covers this usage (R2 egress is free).
 
 Release a new version:
@@ -69,7 +69,7 @@ Release a new version:
 # 2. upload
 cd dist && shasum -a 256 *.exe *.dmg > SHA256SUMS.txt
 for f in *.exe *.dmg SHA256SUMS.txt; do
-  npx wrangler r2 object put "anonymizer-shanoon/v<version>/$f" --file "$f" --remote \
+  npx wrangler r2 object put "anonymo/v<version>/$f" --file "$f" --remote \
     --content-disposition "attachment; filename=\"$f\""
 done
 # 3. bump VERSION in download-worker/src/index.ts, then

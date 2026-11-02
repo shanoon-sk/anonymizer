@@ -1,6 +1,6 @@
 {
-  "name": "anonymizer-by-shanoon",
-  "productName": "Anonymizer by Shanoon",
+  "name": "anonymo",
+  "productName": "Anonymo",
   "version": "0.1.0",
   "description": "Offline anonymizácia PDF, Word a Excel dokumentov pred použitím v ChatGPT alebo Claude.",
   "author": "Shanoon",

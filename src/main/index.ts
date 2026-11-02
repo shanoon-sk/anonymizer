@@ -9,10 +9,10 @@ import { applyPrivacySwitches, hardenWebContents, lockDownNetwork, wipeSessionDa
 const isDev = !app.isPackaged && !!process.env.ELECTRON_RENDERER_URL
 const SHANOON_URL = 'https://shanoon.sk'
 
-const APP_NAME = 'Anonymizer by Shanoon'
+const APP_NAME = 'Anonymo'
 app.setName(APP_NAME)
 applyPrivacySwitches()
-app.setAppUserModelId('sk.shanoon.anonymizer')
+app.setAppUserModelId('sk.shanoon.anonymo')
 
 /** macOS needs an app menu (name + Edit menu, otherwise Cmd+C/V do not work in text fields). */
 function setupMenu(): void {
@@ -76,7 +76,7 @@ const pending = new Map<number, { resolve: (r: FileResult[]) => void; reject: (e
 function startWorker(): UtilityProcess {
   const res = resourcesDir()
   const w = utilityProcess.fork(join(__dirname, 'worker.js'), [], {
-    serviceName: 'Anonymizer – spracovanie',
+    serviceName: 'Anonymo – spracovanie',
     env: {
       ...process.env,
       ANON_MODELS_DIR: join(res, 'models'),

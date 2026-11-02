@@ -6,8 +6,8 @@ export interface Preferences {
   outDir: string | null
 }
 
-/** API exposed to the renderer via contextBridge (window.anonymizer). */
-export interface AnonymizerApi {
+/** API exposed to the renderer via contextBridge (window.anonymo). */
+export interface AnonymoApi {
   /** Native file picker. Returns absolute paths. */
   pickFiles(): Promise<string[]>
   /** Folder picker for the output location. null = cancelled. */

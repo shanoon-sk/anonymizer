@@ -26,7 +26,7 @@ await win.waitForSelector('text=Anonymizovať')
 console.log('title:', await win.title())
 await win.screenshot({ path: join(shotsDir, 'ui-empty.png') })
 
-const results = await win.evaluate(async (p) => window.anonymizer.process([p], { types: ['OSOBA', 'IBAN', 'TELEFON'], customTerms: [], useNer: true, exportText: true }, null), input)
+const results = await win.evaluate(async (p) => window.anonymo.process([p], { types: ['OSOBA', 'IBAN', 'TELEFON'], customTerms: [], useNer: true, exportText: true }, null), input)
 console.log('results:', JSON.stringify(results))
 const out = await JSZip.loadAsync(await readFile(results[0].outputs[0]))
 const xml = await out.file('word/document.xml').async('string')

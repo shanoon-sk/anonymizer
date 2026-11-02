@@ -1,12 +1,12 @@
 // macOS dev only: the bold app name next to the Apple menu (and the Dock label/icon) comes from the
 // Electron binary's Info.plist, not from app code. Rename the local dev Electron so `npm run dev`
-// shows "Anonymizer by Shanoon". Packaged builds get the right name from electron-builder anyway.
+// shows "Anonymo". Packaged builds get the right name from electron-builder anyway.
 const { execFileSync } = require('node:child_process')
 const { copyFileSync, existsSync } = require('node:fs')
 const { join } = require('node:path')
 
 if (process.platform !== 'darwin') process.exit(0)
-const NAME = 'Anonymizer by Shanoon'
+const NAME = 'Anonymo'
 const app = join(__dirname, '..', 'node_modules', 'electron', 'dist', 'Electron.app')
 const plist = join(app, 'Contents', 'Info.plist')
 if (!existsSync(plist)) process.exit(0)

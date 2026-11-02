@@ -28,7 +28,7 @@ export function App() {
 
   // Restore remembered settings (types, output folder) on start…
   useEffect(() => {
-    window.anonymizer
+    window.anonymo
       .loadPreferences()
       .then((p) => {
         if (p) setOpts((o) => ({ ...o, types: new Set(p.types), outDir: p.outDir }))
@@ -38,12 +38,12 @@ export function App() {
   // …and save them whenever they change. Custom terms are deliberately not stored.
   useEffect(() => {
     if (!prefsLoaded) return
-    window.anonymizer.savePreferences({ types: [...opts.types], outDir: opts.outDir })
+    window.anonymo.savePreferences({ types: [...opts.types], outDir: opts.outDir })
   }, [prefsLoaded, opts.types, opts.outDir])
 
   useEffect(
     () =>
-      window.anonymizer.onProgress((e) =>
+      window.anonymo.onProgress((e) =>
         setFiles((fs) => fs.map((f) => (f.path === e.input ? { ...f, stage: e.stage, progress: e.progress, detail: e.detail } : f)))
       ),
     []
@@ -69,7 +69,7 @@ export function App() {
     setError(null)
     const inputs = runnable.map((f) => f.path)
     try {
-      const results = await window.anonymizer.process(
+      const results = await window.anonymo.process(
         inputs,
         {
           types: [...opts.types],
@@ -173,11 +173,11 @@ export function App() {
       {/* Footer */}
       <footer className="flex h-11 shrink-0 items-center justify-between border-t border-border px-6 text-[12px] text-meta">
         <span className="truncate pr-4">{sk.privacy}</span>
-        <button onClick={() => window.anonymizer.openShanoon()} className="group flex shrink-0 cursor-pointer items-center gap-2 hover:text-ink">
+        <button onClick={() => window.anonymo.openShanoon()} className="group flex shrink-0 cursor-pointer items-center gap-2 hover:text-ink">
           <span>{sk.poweredBy}</span>
           <ShanoonMark className="size-4" />
           <span className="font-semibold tracking-wide text-ink group-hover:text-primary">SHANOON</span>
-          <span className="font-mono text-[11px] opacity-60">v{window.anonymizer.version}</span>
+          <span className="font-mono text-[11px] opacity-60">v{window.anonymo.version}</span>
         </button>
       </footer>
     </div>

@@ -1,11 +1,11 @@
 # Security Policy
 
-Anonymizer by Shanoon processes sensitive documents, so we take security reports seriously.
+Anonymo processes sensitive documents, so we take security reports seriously.
 
 ## Reporting a vulnerability
 
 Please **do not open a public issue**. Report privately via
-[GitHub private vulnerability reporting](https://github.com/shanoon-sk/anonymizer/security/advisories/new)
+[GitHub private vulnerability reporting](https://github.com/shanoon-sk/anonymo/security/advisories/new)
 or by e-mail to **info@shanoon.sk**.
 
 Include the app version, OS, and steps or a sample file (with fictional data) that reproduces the issue.

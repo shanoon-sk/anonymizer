@@ -1,5 +1,5 @@
-appId: sk.shanoon.anonymizer
-productName: Anonymizer by Shanoon
+appId: sk.shanoon.anonymo
+productName: Anonymo
 copyright: © Shanoon
 directories:
   output: dist
@@ -50,13 +50,13 @@ appx:
   identityName: TODO.PartnerCenter.Package.Identity.Name
   publisher: CN=TODO-Package-Identity-Publisher
   publisherDisplayName: TODO Package/Properties/PublisherDisplayName
-  displayName: Anonymizer by Shanoon
-  applicationId: AnonymizerByShanoon
+  displayName: Anonymo
+  applicationId: Anonymo
   backgroundColor: '#0f766e'
   languages: [sk-SK]
   minVersion: 10.0.17763.0
   addAutoLaunchExtension: false
-  artifactName: Anonymizer-Shanoon-${version}.${ext}
+  artifactName: Anonymo-${version}.${ext}
 
 nsis:
   oneClick: false
@@ -64,8 +64,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: Anonymizer
-  artifactName: Anonymizer-Shanoon-Setup-${version}.${ext}
+  shortcutName: Anonymo
+  artifactName: Anonymo-Setup-${version}.${ext}
   installerLanguages: [sk_SK]
   language: '1051'
   license: LICENSE
@@ -84,13 +84,13 @@ mac:
   # users still confirm the first launch via right-click → Open).
   identity: '-'
   hardenedRuntime: false
-  artifactName: Anonymizer-Shanoon-${version}-${arch}.${ext}
+  artifactName: Anonymo-${version}-${arch}.${ext}
 
 linux:
   icon: build/icon.png
   category: Office
   target: [AppImage]
-  artifactName: Anonymizer-Shanoon-${version}.${ext}
+  artifactName: Anonymo-${version}.${ext}
 
 # Removes ONNX runtime binaries for other platforms/architectures (~200 MB)
 afterPack: scripts/after-pack.cjs

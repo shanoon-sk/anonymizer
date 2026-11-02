@@ -12,7 +12,7 @@ export function DropZone({ onPaths, compact, disabled }: { onPaths: (paths: stri
     setOver(false)
     setDepth(0)
     if (disabled) return
-    const paths = [...e.dataTransfer.files].map((f) => window.anonymizer.pathForFile(f)).filter(Boolean)
+    const paths = [...e.dataTransfer.files].map((f) => window.anonymo.pathForFile(f)).filter(Boolean)
     if (paths.length) onPaths(paths)
   }
 
@@ -61,7 +61,7 @@ export function DropZone({ onPaths, compact, disabled }: { onPaths: (paths: stri
             size={compact ? 'sm' : 'md'}
             disabled={disabled}
             onClick={async () => {
-              const paths = await window.anonymizer.pickFiles()
+              const paths = await window.anonymo.pickFiles()
               if (paths.length) onPaths(paths)
             }}
           >

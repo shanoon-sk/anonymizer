@@ -2,7 +2,7 @@
 import { ENTITY_GROUPS, type EntityType, type ProgressStage } from '../../shared/entities'
 
 export const sk = {
-  appName: 'Anonymizer',
+  appName: 'Anonymo',
   by: 'by Shanoon',
   offlineBadge: '100 % offline',
   dropTitle: 'Pretiahnite sem súbory',

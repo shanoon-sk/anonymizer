@@ -58,11 +58,11 @@ export function FileRow({ item, onRemove, busy }: { item: FileItem; onRemove: ()
         </div>
         {done && r?.outputs[0] && (
           <div className="flex shrink-0 items-center gap-1.5">
-            <Button size="sm" onClick={() => window.anonymizer.openFile(r.outputs[0])}>
+            <Button size="sm" onClick={() => window.anonymo.openFile(r.outputs[0])}>
               <ExternalLink className="size-3.5" />
               {sk.open}
             </Button>
-            <Button size="sm" variant="ghost" title={sk.showInFolder} onClick={() => window.anonymizer.showInFolder(r.outputs[0])}>
+            <Button size="sm" variant="ghost" title={sk.showInFolder} onClick={() => window.anonymo.showInFolder(r.outputs[0])}>
               <FolderOpen className="size-4" />
             </Button>
           </div>
@@ -102,7 +102,7 @@ export function FileRow({ item, onRemove, busy }: { item: FileItem; onRemove: ()
       {done && r && r.outputs.length > 1 && (
         <p className="mt-2 text-[12px] text-meta">
           + {r.outputs.slice(1).map(fileName).join(', ')}{' '}
-          <button className="cursor-pointer text-primary hover:underline" onClick={() => window.anonymizer.openFile(r.outputs[1])}>
+          <button className="cursor-pointer text-primary hover:underline" onClick={() => window.anonymo.openFile(r.outputs[1])}>
             {sk.open}
           </button>
         </p>
