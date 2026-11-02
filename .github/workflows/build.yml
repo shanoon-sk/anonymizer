@@ -1,0 +1,73 @@
+name: Build installers
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: build:win
+          - os: macos-latest
+            target: build:mac
+          - os: ubuntu-latest
+            target: build:linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Cache offline assets (NER model, OCR data)
+        uses: actions/cache@v4
+        with:
+          path: |
+            resources/models
+            resources/tessdata
+          key: assets-${{ hashFiles('scripts/fetch-assets.mjs') }}
+      - run: npm run fetch-assets
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run ${{ matrix.target }}
+        env:
+          # Windows signing (recommended): configure Azure Trusted Signing or CSC_LINK/CSC_KEY_PASSWORD secrets
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+
+  # Microsoft Store package (MSIX/AppX). Needs the Partner Center identity values in electron-builder.yml.
+  store:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: |
+            resources/models
+            resources/tessdata
+          key: assets-${{ hashFiles('scripts/fetch-assets.mjs') }}
+      - run: npm run fetch-assets
+      - run: npm test
+      - run: npm run build:store
+      - uses: actions/upload-artifact@v4
+        with:
+          name: microsoft-store-package
+          path: dist/*.appx

@@ -1,0 +1,108 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+/* Colours taken 1:1 from shanoon.sk (landing palette; dark mode from the Shanoon app theme). */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --muted: #f8fafc;
+  --border: #e2e8f0;
+  --border-soft: #f1f5f9;
+  --ink: #0f172a;
+  --body: #475569;
+  --meta: #64748b;
+  --primary: #0f766e;
+  --primary-hover: #0d9488;
+  --primary-light: #f0fdfa;
+  --primary-fg: #ffffff;
+  --gold: #b58a3e;
+  --danger: #ef4444;
+  --danger-bg: #fef2f2;
+  --danger-icon: #dc2626;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14181a;
+    --surface: #1b2023;
+    --muted: #262b2c;
+    --border: #ffffff1a;
+    --border-soft: #ffffff10;
+    --ink: #ece7dc;
+    --body: #c9c5ba;
+    --meta: #9a978c;
+    --primary: #2dd4bf;
+    --primary-hover: #5eead4;
+    --primary-light: #123330;
+    --primary-fg: #0d1512;
+    --gold: #c99a4a;
+    --danger: #d1665c;
+    --danger-bg: #3a1f1c;
+    --danger-icon: #e07a70;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
+  --color-ink: var(--ink);
+  --color-body: var(--body);
+  --color-meta: var(--meta);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-light: var(--primary-light);
+  --color-primary-fg: var(--primary-fg);
+  --color-gold: var(--gold);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-icon: var(--danger-icon);
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --radius-card: 0.8rem;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--body);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+textarea,
+input,
+.selectable {
+  user-select: text;
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--primary) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* Thin scrollbars */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--meta) 35%, transparent);
+  border-radius: 999px;
+  border: 3px solid var(--bg);
+}

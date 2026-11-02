@@ -1,0 +1,9 @@
+node_modules/
+out/
+dist/
+# Large offline assets – download with `npm run fetch-assets`
+resources/models/
+resources/tessdata/
+*.log
+.DS_Store
+.wrangler/

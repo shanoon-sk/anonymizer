@@ -1,0 +1,98 @@
+appId: sk.shanoon.anonymizer
+productName: Anonymizer by Shanoon
+copyright: © Shanoon
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**
+  - package.json
+  - '!**/*.{md,map,ts,d.ts}'
+  - '!**/{test,tests,__tests__,docs,example,examples}/**'
+  # Only the Node/native ONNX runtime is used; the web/WebGPU build is never loaded.
+  - '!node_modules/onnxruntime-web/**'
+  - '!node_modules/@img/sharp-wasm32/**'
+  # Big assets are shipped once via extraResources, never inside the asar
+  - '!resources/**'
+  - '!{scripts,tests,build,src}/**'
+
+# Offline assets shipped next to the app (NER model, OCR language data, brand icon).
+extraResources:
+  - from: resources/models
+    to: models
+  - from: resources/tessdata
+    to: tessdata
+  - from: resources/brand
+    to: brand
+
+# Native / WASM modules must live outside the asar archive.
+asarUnpack:
+  - node_modules/onnxruntime-node/**
+  - node_modules/sharp/**
+  - node_modules/@img/**
+  - node_modules/mupdf/**
+  - node_modules/tesseract.js/**
+  - node_modules/tesseract.js-core/**
+
+win:
+  icon: build/icon.png
+  target:
+    - target: nsis
+      arch: [x64]
+  # Code signing (recommended, avoids SmartScreen warnings): configure azureSignOptions
+  # for Azure Trusted Signing, or set CSC_LINK / CSC_KEY_PASSWORD for a .pfx certificate.
+
+# Microsoft Store package (MSIX/AppX). Built on Windows only: `npm run build:store`.
+# The Store signs the package itself – no certificate needed.
+# Values below come from Partner Center → the app → Product management → Product identity.
+appx:
+  identityName: TODO.PartnerCenter.Package.Identity.Name
+  publisher: CN=TODO-Package-Identity-Publisher
+  publisherDisplayName: TODO Package/Properties/PublisherDisplayName
+  displayName: Anonymizer by Shanoon
+  applicationId: AnonymizerByShanoon
+  backgroundColor: '#0f766e'
+  languages: [sk-SK]
+  minVersion: 10.0.17763.0
+  addAutoLaunchExtension: false
+  artifactName: Anonymizer-Shanoon-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Anonymizer
+  artifactName: Anonymizer-Shanoon-Setup-${version}.${ext}
+  installerLanguages: [sk_SK]
+  language: '1051'
+  license: LICENSE
+
+dmg:
+  # LZFSE – smaller download than the default zlib (macOS 10.11+)
+  format: ULFO
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64]
+  # No Apple Developer ID yet → ad-hoc signature (avoids the "app is damaged" error on Apple Silicon;
+  # users still confirm the first launch via right-click → Open).
+  identity: '-'
+  hardenedRuntime: false
+  artifactName: Anonymizer-Shanoon-${version}-${arch}.${ext}
+
+linux:
+  icon: build/icon.png
+  category: Office
+  target: [AppImage]
+  artifactName: Anonymizer-Shanoon-${version}.${ext}
+
+# Removes ONNX runtime binaries for other platforms/architectures (~200 MB)
+afterPack: scripts/after-pack.cjs
+
+publish: null
