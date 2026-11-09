@@ -100,7 +100,8 @@ export async function nerOnChunk(classifier: TokenClassifier, text: string): Pro
         LEADING_STOPWORDS.has(f) ||
         (map.type === 'ADRESA' && GENERIC_LOCATIONS.has(f)) ||
         (map.type === 'FIRMA' && PUBLIC_BODY.test(f)) ||
-        (map.type === 'FIRMA' && PRODUCT_BRANDS.has(f)) ||
+        // A brand, or a brand + product line ("Garmin Tactical", "Samsung Galaxy") – the model's span varies by platform.
+        (map.type === 'FIRMA' && PRODUCT_BRANDS.has(f.split(/\s+/)[0])) ||
         // Short acronyms are almost always labels in accounting docs (IBAN, DPH, IČO, EUR, SR…)
         (map.type !== 'OSOBA' && /^[\p{Lu}\d.]{1,5}$/u.test(value)) ||
         // A single-word organisation needs high confidence

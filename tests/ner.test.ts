@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createNer, NER_MODEL_ID } from '../src/engine/ner'
+import { createNer, NER_MODEL_ID, nerOnChunk } from '../src/engine/ner'
 import { anonymizeText } from '../src/engine/pipeline'
 import { DEFAULT_SELECTED } from '../src/shared/entities'
 
@@ -41,5 +41,26 @@ describe.skipIf(!hasModel)('offline NER', () => {
       ner
     })
     expect(r.output).toBe('Zamestnanec [OSOBA_1], IBAN [IBAN_1], DPH 23 %, EUR')
+  })
+})
+
+describe('NER post-processing (fake model, platform independent)', () => {
+  /** A classifier that tags the given whitespace-separated words, like the ONNX model does on some platforms. */
+  function fakeClassifier(tags: Record<string, string>) {
+    const fn = async (text: string) =>
+      text.split(' ').flatMap((word, i) => (tags[word] ? [{ entity: tags[word], score: 0.95, index: i + 1, word }] : []))
+    return Object.assign(fn, { tokenizer: { tokenize: (text: string) => text.split(' ') } })
+  }
+
+  it('drops brand + product line spans ("Garmin Tactical" on Linux CI)', async () => {
+    const text = 'Použitá nabíjačka Garmin Tactical Recce'
+    const ents = await nerOnChunk(fakeClassifier({ Garmin: 'B-ORG', Tactical: 'I-ORG' }), text)
+    expect(ents).toEqual([])
+  })
+
+  it('still keeps real organisations', async () => {
+    const text = 'Zmluvu podpísala Gama Delta za odberateľa'
+    const ents = await nerOnChunk(fakeClassifier({ Gama: 'B-ORG', Delta: 'I-ORG' }), text)
+    expect(ents.map((e) => e.text)).toEqual(['Gama Delta'])
   })
 })

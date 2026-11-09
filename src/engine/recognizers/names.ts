@@ -74,7 +74,7 @@ export const PRODUCT_BRANDS = new Set(
   `apple samsung canon garmin lenovo dell hp asus acer sony lg philips xiaomi huawei microsoft google amazon alza
   alzapower logitech tp-link bosch siemens ikea nikon panasonic epson brother intel amd nvidia nokia motorola oneplus
   jbl bose sennheiser dyson sencor eta tefal braun gorenje electrolux whirlpool miele beko hama axagon vention
-  datacom ubiquiti mikrotik synology western digital seagate kingston sandisk crucial razer corsair steelseries
+  datacom ubiquiti mikrotik synology wd seagate kingston sandisk crucial razer corsair steelseries
   volvo bmw audi skoda volkswagen toyota ford mercedes renault peugeot kia hyundai honda mazda opel nissan fiat
   seat citroen porsche tesla dacia suzuki`
     .split(/\s+/)
