@@ -24,7 +24,7 @@ export function canonicalKey(type: EntityType, value: string): string {
     if (type === 'TELEFON') d = d.replace(/^(00)?421/, '0').replace(/^(00)?420/, '0')
     return d
   }
-  if (type === 'IBAN' || type === 'IC_DPH' || type === 'BIC' || type === 'SPZ' || type === 'DOKLAD')
+  if (type === 'IBAN' || type === 'IC_DPH' || type === 'BIC' || type === 'SPZ' || type === 'VIN' || type === 'DOKLAD' || type === 'ZMLUVA' || type === 'FAKTURA')
     return value.replace(/[\s-]/g, '').toUpperCase()
   if (type === 'EMAIL' || type === 'URL')
     return value.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')

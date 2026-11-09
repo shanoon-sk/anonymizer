@@ -5,6 +5,7 @@ import { type KnownValue, knownValuesRecognizer } from './recognizers/known'
 import { mergeEntities } from './merge'
 import { PlaceholderRegistry } from './placeholder'
 import { applyEntities } from './rewrite'
+import { stemToken } from './normalize'
 
 /** Async entity source, e.g. the offline NER model. Receives plain text, returns spans in it. */
 export type NerFn = (text: string) => Promise<Entity[]>
@@ -17,7 +18,7 @@ const LEGAL_FORM_TAIL = /,?\s*(spol\.\s*s\s*r\.\s*o\.?|s\.\s*r\.\s*o\.?|a\.\s*s\
 
 /** Types whose values are worth re-matching across the whole batch (consistency pass). */
 const PROPAGATE: EntityType[] = [
-  'OSOBA', 'FIRMA', 'RODNE_CISLO', 'ICO', 'DIC', 'IC_DPH', 'IBAN', 'UCET', 'EMAIL', 'TELEFON', 'ADRESA', 'DOKLAD', 'SPZ', 'KARTA', 'BIC'
+  'OSOBA', 'FIRMA', 'RODNE_CISLO', 'ICO', 'DIC', 'IC_DPH', 'IBAN', 'UCET', 'EMAIL', 'TELEFON', 'ADRESA', 'DOKLAD', 'SPZ', 'VIN', 'KARTA', 'BIC', 'ZMLUVA', 'FAKTURA', 'SYMBOL'
 ]
 
 function runRecognizers(recognizers: Recognizer[], text: string, enabled: Set<EntityType>): Entity[] {
@@ -98,6 +99,15 @@ export async function anonymizeBatch(
     pass1.push(res)
   }
 
+  // A single word the NER model tags as a company/place but that the batch also uses in lower case is a
+  // common noun ("Strana 1 z 6" vs. "obidve strany"). Drop it before it is propagated everywhere.
+  const commonStems = new Set<string>()
+  for (const segs of docs)
+    for (const seg of segs) for (const w of seg.text.match(/(?<![\p{L}\d])\p{Ll}\p{L}{2,}/gu) ?? []) commonStems.add(stemToken(w))
+  const isCommonNoun = (e: Entity) =>
+    e.source === 'ner' && (e.type === 'FIRMA' || e.type === 'ADRESA') && !/\s/.test(e.text.trim()) && commonStems.has(stemToken(e.text.trim()))
+  for (const res of pass1) for (let si = 0; si < res.length; si++) res[si] = res[si].filter((e) => !isCommonNoun(e))
+
   // Collect confident values for the consistency pass
   const known: KnownValue[] = []
   docs.forEach((segs, di) =>
@@ -107,6 +117,8 @@ export async function anonymizeBatch(
         if ((!PROPAGATE.includes(e.type) && e.source !== 'column') || e.score < 0.6) continue
         const v = e.text.trim()
         if (v.length < 3) continue
+        // Short document numbers and symbols ("č. 15", "KS 0308") would hide unrelated numbers everywhere.
+        if ((e.type === 'ZMLUVA' || e.type === 'FAKTURA' || e.type === 'SYMBOL') && v.replace(/\W/g, '').length < 5) continue
         known.push({ type: e.type, value: v, score: Math.min(0.88, e.score) })
         // Company name without the legal form ("Gama Delta s.r.o." → "Gama Delta")
         if (e.type === 'FIRMA') {

@@ -19,6 +19,20 @@ describe.skipIf(!hasModel)('offline NER', () => {
     expect(r.output).not.toContain('Dvořáková')
   })
 
+  it('public authorities are not anonymized', async () => {
+    const ner = await createNer(modelRoot)
+    const t = 'Daňový režim: podľa stanoviska Finančnej správy SR sa pri postúpení zmluvy postupuje ako pri kúpe.'
+    const r = await anonymizeText(t, { types: DEFAULT_SELECTED, customTerms: [], ner })
+    expect(r.output).toBe(t)
+  })
+
+  it('well-known product brands on invoice lines stay readable', async () => {
+    const ner = await createNer(modelRoot)
+    const t = 'Použitý televízor Samsung 65" QE65QN80F 1 ks\nPoužitá tlačiareň Canon PIXMA TS3450 1 ks\nPoužitá nabíjačka Garmin Tactical Recce'
+    const r = await anonymizeText(t, { types: DEFAULT_SELECTED, customTerms: [], ner })
+    expect(r.output).toBe(t)
+  })
+
   it('does not treat accounting labels as organisations', async () => {
     const ner = await createNer(modelRoot)
     const r = await anonymizeText('Zamestnanec Branislav Hrušovský, IBAN SK31 1200 0000 1987 4263 7541, DPH 23 %, EUR', {

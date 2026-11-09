@@ -1,6 +1,7 @@
 import type * as MuPDF from 'mupdf'
 import type { ResolvedEntity, SegmentResult } from '../types'
 import type { DocumentAdapter } from './adapter'
+import { BOX_RGB, INK_RGB, labelGeometry, type Overlay, rewritePageInOrder } from './pdf-inorder'
 
 /** A word recognised by OCR, in pixel coordinates of the rendered page image. */
 export interface OcrWord {
@@ -97,8 +98,8 @@ async function ocrPageText(mupdf: typeof MuPDF, page: MuPDF.PDFPage, ocr: OcrFn)
   return { text, quads, lines, ocr: true }
 }
 
-/** One rectangle per text line covered by the entity. */
-function entityRects(pt: PageText, e: ResolvedEntity): Rect[] {
+/** One rectangle per text line covered by the entity, in reading order. */
+function entityRects(pt: PageText, e: ResolvedEntity): { line: number; rect: Rect }[] {
   const byLine = new Map<number, Rect>()
   for (let i = e.start; i < e.end; i++) {
     const q = pt.quads[i]
@@ -109,7 +110,7 @@ function entityRects(pt: PageText, e: ResolvedEntity): Rect[] {
     const cur = byLine.get(pt.lines[i])
     byLine.set(pt.lines[i], cur ? [Math.min(cur[0], r[0]), Math.min(cur[1], r[1]), Math.max(cur[2], r[2]), Math.max(cur[3], r[3])] : r)
   }
-  return [...byLine.values()]
+  return [...byLine.entries()].map(([line, rect]) => ({ line, rect }))
 }
 
 const pdfString = (s: string) => '(' + s.replace(/[\\()]/g, (c) => '\\' + c) + ')'
@@ -173,8 +174,11 @@ export async function loadPdf(buf: Uint8Array, opts: { ocr?: OcrFn; onOcrPage?: 
     },
     async write(results: SegmentResult[]) {
       const font = new mupdf.Font('Helvetica')
-      const fontRef = doc.addSimpleFont(font, 'Latin')
+      let fontRef: MuPDF.PDFObject | undefined
+      let unicodeFontRef: MuPDF.PDFObject | undefined
       const widthAt1 = (s: string) => [...s].reduce((w, ch) => w + font.advanceGlyph(font.encodeCharacter(ch)), 0)
+      /** Glyph ids for the Identity-H encoded Unicode font (ToUnicode makes it extractable). */
+      const unicodeHex = (s: string) => [...s].map((ch) => font.encodeCharacter(ch.codePointAt(0)!).toString(16).padStart(4, '0')).join('')
 
       for (let i = 0; i < count; i++) {
         const ents = results[i].entities
@@ -200,39 +204,79 @@ export async function loadPdf(buf: Uint8Array, opts: { ocr?: OcrFn; onOcrPage?: 
         if (removedAnnots) warnings.push(`Strana ${i + 1}: odstránených ${removedAnnots} poznámok/anotácií.`)
 
         if (!ents.length) continue
-        const overlays: { rect: Rect; label: string }[] = []
+        const pt = pages[i]
+        const overlays: Overlay[] = []
+        /** Character index → overlay covering it (drives the OCR text layer). */
+        const ownerAt = new Map<number, number>()
         for (const e of ents) {
-          const rects = entityRects(pages[i], e)
-          rects.forEach((r, k) => {
+          const byLine = new Map<number, number>()
+          entityRects(pt, e).forEach(({ line, rect: r }, k) => {
             const pad = 0.5
-            const rr: Rect = [r[0] - pad, r[1] - pad, r[2] + pad, r[3] + pad]
-            const annot = page.createAnnotation('Redact')
-            annot.setRect(rr)
-            overlays.push({ rect: rr, label: k === 0 ? e.placeholder : '' })
+            byLine.set(line, overlays.length)
+            overlays.push({ rect: [r[0] - pad, r[1] - pad, r[2] + pad, r[3] + pad], label: k === 0 ? e.placeholder : '' })
           })
+          for (let c = e.start; c < e.end; c++) {
+            const k = byLine.get(pt.lines[c])
+            if (k !== undefined && pt.quads[c]) ownerAt.set(c, k)
+          }
         }
-        page.applyRedactions(
-          false,
-          mupdf.PDFPage.REDACT_IMAGE_PIXELS,
-          mupdf.PDFPage.REDACT_LINE_ART_NONE,
-          mupdf.PDFPage.REDACT_TEXT_REMOVE
-        )
+        const redact = (textMethod: number) => {
+          for (const o of overlays) page.createAnnotation('Redact').setRect(o.rect)
+          page.applyRedactions(false, mupdf.PDFPage.REDACT_IMAGE_PIXELS, mupdf.PDFPage.REDACT_LINE_ART_NONE, textMethod)
+        }
 
-        // Draw grey boxes with the placeholder. Coordinates are in MuPDF page space (y down);
-        // the inverse page transform maps them into PDF user space.
+        if (!pt.ocr) {
+          // Pixels of images under the boxes first; then re-record the text with placeholders in stream order.
+          redact(mupdf.PDFPage.REDACT_TEXT_NONE)
+          if (rewritePageInOrder(mupdf, doc, i, overlays, font)) continue
+          warnings.push(`Strana ${i + 1}: značky sú v texte PDF na konci strany (náhradný režim).`)
+        }
+
+        // Scanned pages (and the fallback): remove text with MuPDF's redaction and append boxes + labels.
+        // Scanned pages also get an invisible OCR text layer in reading order with the labels inline,
+        // so LLM tools read the page as text instead of a few stray placeholders.
+        redact(mupdf.PDFPage.REDACT_TEXT_REMOVE)
         const inv = mupdf.Matrix.invert(page.getTransform())
         let cs = `q ${inv.map(n).join(' ')} cm\n`
-        for (const { rect, label } of overlays) {
+        const drawn = new Set<number>()
+        const box = (k: number) => {
+          if (drawn.has(k)) return
+          drawn.add(k)
+          const { rect, label } = overlays[k]
           const [x0, y0, x1, y1] = rect
-          const w = x1 - x0
-          const h = y1 - y0
-          cs += `0.9 0.95 0.94 rg ${n(x0)} ${n(y0)} ${n(w)} ${n(h)} re f\n`
-          if (!label) continue
-          const tw = widthAt1(label)
-          const size = Math.max(3.5, Math.min(h * 0.78, (w - 1) / tw))
-          const ty = y0 + h / 2 + size * 0.35
-          cs += `BT /FAnon ${n(size)} Tf 0.06 0.46 0.43 rg 1 0 0 -1 ${n(x0 + 0.5)} ${n(ty)} Tm ${pdfString(label)} Tj ET\n`
+          cs += `${BOX_RGB.join(' ')} rg ${n(x0)} ${n(y0)} ${n(x1 - x0)} ${n(y1 - y0)} re f\n`
+          if (!label) return
+          const g = labelGeometry(rect, label, widthAt1)
+          cs += `BT 0 Tr /FAnon ${n(g.size)} Tf ${INK_RGB.join(' ')} rg 1 0 0 -1 ${n(g.x)} ${n(g.y)} Tm ${pdfString(label)} Tj ET\n`
         }
+        if (pt.ocr) {
+          let runStart = -1
+          const flush = (end: number) => {
+            if (runStart < 0) return
+            const run = pt.text.slice(runStart, end)
+            const qs = pt.quads.slice(runStart, end).filter((q): q is Quad => !!q)
+            runStart = -1
+            if (!run.trim() || !qs.length) return
+            const x0 = qs[0][0]
+            const x1 = qs[qs.length - 1][2]
+            const top = Math.min(...qs.map((q) => q[1]))
+            const bottom = Math.max(...qs.map((q) => q[5]))
+            const size = Math.max(1, bottom - top)
+            const natural = widthAt1(run) * size
+            const tz = natural > 0 ? (100 * (x1 - x0)) / natural : 100
+            cs += `BT 3 Tr /FAnonU ${n(size)} Tf ${n(tz)} Tz 1 0 0 -1 ${n(x0)} ${n(bottom - size * 0.2)} Tm <${unicodeHex(run)}> Tj ET\n`
+          }
+          for (let c = 0; c < pt.text.length; c++) {
+            const k = ownerAt.get(c)
+            if (k !== undefined) {
+              flush(c)
+              box(k)
+            } else if (pt.text[c] === '\n') flush(c)
+            else if (runStart < 0) runStart = c
+          }
+          flush(pt.text.length)
+        }
+        overlays.forEach((_, k) => box(k))
         cs += 'Q\n'
 
         const pageObj = page.getObject()
@@ -246,7 +290,8 @@ export async function loadPdf(buf: Uint8Array, opts: { ocr?: OcrFn; onOcrPage?: 
           fonts = doc.newDictionary()
           res.put('Font', fonts)
         }
-        fonts.put('FAnon', fontRef)
+        fonts.put('FAnon', (fontRef ??= doc.addSimpleFont(font, 'Latin')))
+        if (pt.ocr) fonts.put('FAnonU', (unicodeFontRef ??= doc.addFont(font)))
         const contents = pageObj.get('Contents')
         const arr = doc.newArray()
         arr.push(doc.addStream('q\n', {}))
@@ -270,10 +315,20 @@ export async function loadPdf(buf: Uint8Array, opts: { ocr?: OcrFn; onOcrPage?: 
       for (const key of ['Author', 'Title', 'Subject', 'Keywords', 'Creator', 'Producer']) doc.setMetaData(`info:${key}`, '')
       const root = doc.getTrailer().get('Root')
       if (!root.get('Metadata').isNull()) root.delete('Metadata')
-      if (Object.keys(doc.getEmbeddedFiles()).length) warnings.push('PDF obsahuje vložené prílohy – tie neboli anonymizované.')
+      // Attachments (e.g. the ISDOC/ZUGFeRD XML that invoicing tools embed) hold the same data unredacted.
+      const attachments = Object.keys(doc.getEmbeddedFiles())
+      for (const name of attachments) doc.deleteEmbeddedFile(name)
+      // PDF/A-3 also lists them as associated files (/AF) on the catalog and pages.
+      root.delete('AF')
+      for (let i = 0; i < count; i++) pageAt(i).getObject().delete('AF')
+      if (attachments.length)
+        warnings.push(`Odstránené vložené prílohy (${attachments.join(', ')}) – obsahovali neanonymizované údaje.`)
 
       // Full rewrite with garbage collection: removes the original (now unreferenced) content streams.
-      return doc.saveToBuffer('garbage=4,compress=yes,clean=yes').asUint8Array().slice()
+      // Two passes: MuPDF's object de-duplication (garbage≥3) loses the data of streams created in memory
+      // when there are several of them (pages re-recorded in order), so first write them out without it.
+      const settled = mupdf.Document.openDocument(doc.saveToBuffer('garbage=2').asUint8Array().slice(), 'application/pdf').asPDF()!
+      return settled.saveToBuffer('garbage=4,compress=yes,clean=yes').asUint8Array().slice()
     }
   }
 }

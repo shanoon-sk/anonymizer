@@ -57,7 +57,7 @@ export const LEADING_STOPWORDS = new Set(
   `spolocnost firma dodavatel odberatel objednavatel zhotovitel prenajimatel najomca klient faktura zmluva
   predavajuci kupujuci veritel dlznik poskytovatel prijimatel platitel zamestnavatel zamestnanec konatel
   pan pani pre od do a so s v na k o uhrada platba objednavka dobropis zalohova vystavil prevzal ucet
-  obchodne meno nazov meno priezvisko a.s spol the company`
+  obchodne meno nazov meno priezvisko a.s spol the company strana`
     .split(/\s+/)
     .filter(Boolean)
 )
@@ -68,3 +68,32 @@ export const GENERIC_LOCATIONS = new Set([
   'ceska republika', 'ceskej republiky', 'cr', 'cesko', 'eu', 'europa', 'europska unia', 'europskej unie',
   'nemecko', 'rakusko', 'madarsko', 'polsko', 'ukrajina', 'usa', 'svet'
 ])
+
+/** Product brands that appear on invoice lines; the NER model tags them as organisations (folded). */
+export const PRODUCT_BRANDS = new Set(
+  `apple samsung canon garmin lenovo dell hp asus acer sony lg philips xiaomi huawei microsoft google amazon alza
+  alzapower logitech tp-link bosch siemens ikea nikon panasonic epson brother intel amd nvidia nokia motorola oneplus
+  jbl bose sennheiser dyson sencor eta tefal braun gorenje electrolux whirlpool miele beko hama axagon vention
+  datacom ubiquiti mikrotik synology western digital seagate kingston sandisk crucial razer corsair steelseries
+  volvo bmw audi skoda volkswagen toyota ford mercedes renault peugeot kia hyundai honda mazda opel nissan fiat
+  seat citroen porsche tesla dacia suzuki`
+    .split(/\s+/)
+    .filter(Boolean)
+)
+
+/**
+ * Public authorities and institutions (folded, inflected forms via \p{L}*). Not personal data, and hiding
+ * them ("podľa stanoviska Finančnej správy SR") removes context the reader needs.
+ */
+export const PUBLIC_BODY = new RegExp(
+  '^(?:' +
+    [
+      'financn\\p{L}* (?:sprav|riaditel)', 'danov\\p{L}* urad', 'coln\\p{L}* urad', 'socialn\\p{L}* poistov',
+      'vseobecn\\p{L}* zdravotn', 'ministerst', 'vlad\\p{L}* (?:sr|slovenskej)', 'narodn\\p{L}* (?:bank|rad)',
+      'okresn\\p{L}* (?:urad|sud)', 'krajsk\\p{L}* (?:urad|sud)', 'najvyss\\p{L}* (?:sud|kontroln)', 'ustavn\\p{L}* sud',
+      'generaln\\p{L}* prokurat', 'obchodn\\p{L}* registr', 'statistick\\p{L}* urad', 'urad\\p{L}* (?:vlady|pre|na)',
+      'europsk\\p{L}* (?:uni|komisi|parlament|centraln)', 'policajn\\p{L}* zbor', 'inspektorat prace', 'nbs\\b'
+    ].join('|') +
+    ')',
+  'u'
+)

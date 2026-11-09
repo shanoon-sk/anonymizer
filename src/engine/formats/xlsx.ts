@@ -34,6 +34,9 @@ const HEADER_RULES: [RegExp, EntityType][] = [
   [/adresa|ulica|bydlisko|^sidlo|trvaly pobyt|address|street/, 'ADRESA'],
   [/cislo op|obciansky|cislo pasu|cislo dokladu|passport/, 'DOKLAD'],
   [/^ecv|^spz|evidencne cislo vozidla/, 'SPZ'],
+  [/^vin$|identifikacne cislo vozidla|cislo podvozku/, 'VIN'],
+  [/cislo zmluvy|^zmluva/, 'ZMLUVA'],
+  [/cislo faktury|^faktura|cislo dobropisu/, 'FAKTURA'],
   [/obchodne meno|nazov firmy|nazov spolocnosti|^firma|^spolocnost|^odberatel|^dodavatel|^partner|company/, 'FIRMA'],
   [/meno|priezvisko|zamestnan|^osoba|^klient|^name|full name|surname|employee/, 'OSOBA']
 ]

@@ -79,6 +79,22 @@ export function luhn(raw: string): boolean {
   return sum % 10 === 0
 }
 
+/**
+ * SK/CZ domestic account "prefix-number" (bank code excluded): both parts must pass the mandatory
+ * weighted mod-11 check (weights 6,3,7,9,10,5,8,4,2,1 right-aligned).
+ */
+export function isValidDomesticAccount(raw: string): boolean {
+  const [pre, num] = raw.includes('-') ? raw.split('-') : ['', raw]
+  const ok = (part: string) => {
+    const d = part.padStart(10, '0')
+    const w = [6, 3, 7, 9, 10, 5, 8, 4, 2, 1]
+    return [...d].reduce((sum, c, i) => sum + +c * w[i], 0) % 11 === 0
+  }
+  if (!/^\d{2,10}$/.test(num) || (pre && !/^\d{1,6}$/.test(pre))) return false
+  if (num.replace(/0/g, '').length < 2) return false
+  return ok(num) && (!pre || ok(pre))
+}
+
 /** Bank codes of Slovak and Czech banks (domestic account format "prefix-number/code"). */
 export const BANK_CODES = new Set(
   (

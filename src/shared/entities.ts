@@ -21,6 +21,9 @@ export const ENTITY_TYPES = [
   'PSC',
   'URL',
   'SPZ',
+  'VIN',
+  'ZMLUVA',
+  'FAKTURA',
   'VLASTNE'
 ] as const
 
@@ -74,7 +77,16 @@ export const ENTITY_GROUPS: EntityGroup[] = [
       { type: 'ADRESA', label: 'Adresa', hint: 'Hlavná 12, Bratislava', defaultOn: true },
       { type: 'PSC', label: 'PSČ', hint: '811 01', defaultOn: true },
       { type: 'URL', label: 'Webová adresa', hint: 'www.firma.sk', defaultOn: true },
-      { type: 'SPZ', label: 'EČV (ŠPZ)', hint: 'BA123AB', defaultOn: true }
+      { type: 'SPZ', label: 'EČV (ŠPZ)', hint: 'BA123AB', defaultOn: true },
+      { type: 'VIN', label: 'VIN vozidla', hint: 'WVWZZZ1KZ6W612345', defaultOn: true }
+    ]
+  },
+  {
+    id: 'doklady',
+    label: 'Zmluvy a doklady',
+    items: [
+      { type: 'ZMLUVA', label: 'Číslo zmluvy', hint: 'zmluva č. 2024/015', defaultOn: false },
+      { type: 'FAKTURA', label: 'Číslo faktúry / dokladu', hint: 'faktúra č. FV-2024-001', defaultOn: false }
     ]
   }
 ]

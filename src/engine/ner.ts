@@ -1,7 +1,7 @@
 import type { Entity, EntityType } from './types'
 import type { NerFn } from './pipeline'
 import { fold } from './text'
-import { GENERIC_LOCATIONS, LEADING_STOPWORDS } from './recognizers/names'
+import { GENERIC_LOCATIONS, LEADING_STOPWORDS, PRODUCT_BRANDS, PUBLIC_BODY } from './recognizers/names'
 
 export const NER_MODEL_ID = 'Xenova/bert-base-multilingual-cased-ner-hrl'
 
@@ -99,6 +99,8 @@ export async function nerOnChunk(classifier: TokenClassifier, text: string): Pro
         !/\p{Lu}/u.test(value) ||
         LEADING_STOPWORDS.has(f) ||
         (map.type === 'ADRESA' && GENERIC_LOCATIONS.has(f)) ||
+        (map.type === 'FIRMA' && PUBLIC_BODY.test(f)) ||
+        (map.type === 'FIRMA' && PRODUCT_BRANDS.has(f)) ||
         // Short acronyms are almost always labels in accounting docs (IBAN, DPH, IČO, EUR, SR…)
         (map.type !== 'OSOBA' && /^[\p{Lu}\d.]{1,5}$/u.test(value)) ||
         // A single-word organisation needs high confidence

@@ -2,6 +2,7 @@ import type { Entity, EntityType, Recognizer } from '../types'
 import { digitsOnly, escapeRegExp, fold, hasContext, LO, UP, WB, WE } from '../text'
 import {
   BANK_CODES,
+  isValidDomesticAccount,
   isValidIban,
   isValidIco,
   isValidRodneCislo,
@@ -68,14 +69,30 @@ const rodneCislo = recognizer(
   }
 )
 
+/** Text right before a number that marks it as a document/contract number ("č.", "číslo", "no."). */
+const DOC_NUMBER_BEFORE = /(?:^|[^\p{L}])(?:c|cis|cislo|no|nr|num)\.?\s*:?\s*$/u
+
 const ICO_CTX = ['ico', 'ic', 'ico:', 'identifikacne cislo', 'identifikacne cislo organizacie', 'company id']
 const ico = recognizer('ico', 'ICO', /(?<![\d/.,-])(\d{2}\s?\d{3}\s?\d{3})(?![\d/]|[,.]\d)/g, (m, text, emit) => {
   const [s, e] = span(m)
   if (!isValidIco(m[1])) return
   const c = ctx(text, s, e, ICO_CTX, 25)
   if (!c && /\s/.test(m[1])) return
+  // "faktúra č. 30260001", "zmluva číslo …": a document number that happens to pass the IČO checksum
+  if (!c && DOC_NUMBER_BEFORE.test(fold(text.slice(Math.max(0, s - 12), s)))) return
   emit(s, e, c ? 0.95 : 0.55)
 })
+
+/** Trade register number of a sole trader ("Číslo živnostenského registra: 560-25788"). */
+const zivnostRegister = recognizer(
+  'zivnostensky-register',
+  'ICO',
+  /(?:živnostensk\p{L}*\s+registr\p{L}*|(?<![\p{L}])ŽR)[^\d\n]{0,20}?(\d{3}-\d{3,8}|\d{6,12})(?![\d])/dgiu,
+  (m, _text, emit) => {
+    const [s, e] = span(m, 1)
+    emit(s, e, 0.92)
+  }
+)
 
 const DIC_CTX = ['dic', 'dic:', 'danove identifikacne cislo', 'tax id']
 const dic = recognizer('dic', 'DIC', /(?<![\d/A-Z])(\d{10})(?![\d/])/g, (m, text, emit) => {
@@ -153,7 +170,8 @@ const ucet = recognizer('ucet', 'UCET', /(?<![\d-])((?:\d{1,6}-)?\d{2,10})\/(\d{
   const [s, e] = span(m)
   const c = ctx(text, s, e, UCET_CTX, 40)
   const known = BANK_CODES.has(m[2])
-  if (known) emit(s, e, c ? 0.95 : 0.8)
+  // Without "účet" nearby, require the mandatory SK/CZ mod-11 checksum ("12/2020" is a date, not an account).
+  if (known && (c || isValidDomesticAccount(m[1]))) emit(s, e, c ? 0.95 : 0.8)
   else if (c) emit(s, e, 0.7)
 })
 
@@ -168,7 +186,9 @@ const symbol = recognizer(
   'symbol',
   'SYMBOL',
   /(?:(?<![\p{L}])(?:VS|KS|SS|V\.S\.|K\.S\.)|variabiln\p{L}*\s+symbol\p{L}*|kon[sš]tantn\p{L}*\s+symbol\p{L}*|[sš]pecifick\p{L}*\s+symbol\p{L}*)\s*[:.=]?\s*(\d{1,10})(?!\d)/dgiu,
-  (m, _text, emit) => {
+  (m, text, emit) => {
+    // Abbreviations count only in capitals: "1 ks 748,00 €" is a quantity in pieces, not a constant symbol.
+    if (/^(?:vs|ks|ss|v\.s|k\.s)/.test(m[0]) || /^[,.]\d/.test(text.slice(m.index + m[0].length))) return
     const [s, e] = span(m, 1)
     emit(s, e, 0.92)
   }
@@ -229,14 +249,17 @@ const url = recognizer('url', 'URL', URL_RE, (m, text, emit) => {
 })
 
 const PSC_CTX = ['psc', 'psc:', 'postove smerovacie cislo', 'zip']
-const CITY = `${UP}${LO}+(?:(?:\\s+|\\s?-\\s?)${UP}${LO}+){0,2}(?:\\s+\\d{1,2}(?!\\d))?`
+/** Horizontal whitespace, and a gap of whitespace containing at most one line break (never a blank line). */
+const HS = '[ \\t\\u00a0]'
+const GAP = `(?:${HS}+\\n?|\\n)${HS}*`
+const CITY = `${UP}${LO}+(?:(?:${HS}+|${HS}?-${HS}?)${UP}${LO}+){0,2}(?:${HS}+\\d{1,2}(?!\\d))?(?:${HS}*-${GAP}mestsk${LO}+${GAP}${LO}+${GAP}${UP}${LO}+(?:${HS}+${UP}${LO}+)?)?`
 const psc = recognizer(
   'psc',
   'PSC',
-  new RegExp(`(?<![\\d,.])(\\d{3}\\s?\\d{2})(?![\\d,.])`, 'gu'),
+  new RegExp(`(?<![\\d,./-])(\\d{3}\\s?\\d{2})(?![\\d,./-])`, 'gu'),
   (m, text, emit) => {
     const [s, e] = span(m, 1)
-    const followedByCity = new RegExp(`^\\s+${UP}${LO}`, 'u').test(text.slice(e, e + 4))
+    const followedByCity = new RegExp(`^${HS}+${UP}${LO}`, 'u').test(text.slice(e, e + 4))
     const c = ctx(text, s, e, PSC_CTX, 20)
     if (c) emit(s, e, 0.9)
     else if (followedByCity && /\s/.test(m[1])) emit(s, e, 0.75)
@@ -249,10 +272,10 @@ const ADDR_CTX = [
   'trvale bytom', 'miesto podnikania', 'prechodny pobyt', 'ulica', 'ul.', 'korespondencna adresa', 'dorucovacia adresa',
   'address', 'byt', 'bytom v', 'miesto dodania'
 ]
-const STREET_WORD = `(?:ul\\.\\s*)?(?:\\d{1,2}\\.\\s*)?${UP}[\\p{L}'’.-]*(?:\\s+(?:${UP}[\\p{L}'’.-]*|${LO}{1,3}\\.?|[\\p{L}]+(?:ská|cká|ova|ná|ého|ej)))?(?:\\s+${UP}[\\p{L}'’.-]*){0,2}`
+const STREET_WORD = `(?:ul\\.${HS}*)?(?:\\d{1,2}\\.${HS}*)?${UP}[\\p{L}'’.-]*(?:${HS}+(?:${UP}[\\p{L}'’.-]*|${LO}{1,3}\\.?|[\\p{L}]+(?:ská|cká|ova|ná|ého|ej)))?(?:${HS}+${UP}[\\p{L}'’.-]*){0,2}`
 const HOUSE_NO = '\\d{1,5}[a-zA-Z]?(?:\\s?\\/\\s?(?:\\d{1,5}[a-zA-Z]?|[a-zA-Z]))?(?![\\d,.]\\d)'
 const ADDR_RE = new RegExp(
-  `(?<![\\p{L}\\d])(${STREET_WORD})\\s+(${HOUSE_NO})(?:(\\s*,\\s*|\\s+)(\\d{3}\\s?\\d{2})\\s+(${CITY}))?`,
+  `(?<![\\p{L}\\d])(${STREET_WORD})${HS}+(${HOUSE_NO})(?:(${HS}*,${GAP}|${GAP})(\\d{3}${HS}?\\d{2})${GAP}(${CITY}))?`,
   'dgu'
 )
 const STREET_ENDINGS = /(ská|cká|ova|ová|ná|ia|ého|ej|cesta|ulica|námestie|nám\.|nábrežie|trieda|sady|alej|park|rad|vrch|hora|dolina)$/iu
@@ -281,7 +304,7 @@ const adresa = recognizer('adresa', 'ADRESA', ADDR_RE, (m, text, emit) => {
 const pscCity = recognizer(
   'psc-mesto',
   'ADRESA',
-  new RegExp(`(?<![\\d,.])(\\d{3}\\s\\d{2})\\s+(${CITY})`, 'gu'),
+  new RegExp(`(?<![\\d,.])(\\d{3}${HS}\\d{2})${GAP}(${CITY})`, 'gu'),
   (m, _text, emit) => emit(m.index, m.index + m[0].length, 0.75)
 )
 
@@ -298,6 +321,70 @@ const spz = recognizer('spz', 'SPZ', new RegExp(`${WB}([A-Z]{2})[ -]?(\\d{3})[ -
   if (c) emit(s, e, 0.95)
   else if (SK_DISTRICTS.has(m[1])) emit(s, e, 0.65)
 })
+
+const VIN_CTX = ['vin', 'vin:', 'cislo podvozku', 'podvozok', 'podvozku', 'identifikacne cislo vozidla', 'vozidlo', 'vozidla']
+/** Vehicle identification number: 17 characters, no I/O/Q, mixing letters and digits. */
+const vin = recognizer('vin', 'VIN', new RegExp(`${WB}([A-HJ-NPR-Z0-9]{17})${WE}`, 'gu'), (m, text, emit) => {
+  const [s, e] = span(m)
+  const v = m[1]
+  const digits = v.replace(/\D/g, '').length
+  if (digits < 3 || digits > 14) return
+  if (ctx(text, s, e, VIN_CTX, 40)) emit(s, e, 0.95)
+  // Most manufacturers end the VIN with a numeric serial; letters up front (WMI) – distinctive enough alone.
+  else if (/^[A-Z]{2}/.test(v) && /\d{4}$/.test(v)) emit(s, e, 0.8)
+})
+
+// ─── Contract and invoice numbers ────────────────────────────────────────────
+
+/** Folded keyword → what a following "č. …" numbers. `null` = a numbered thing that is not sensitive. */
+const NUMBERED: [RegExp, EntityType | null][] = [
+  [/zmluv\p{L}*|dodat\p{L}*/u, 'ZMLUVA'],
+  [/faktur\p{L}*|dobropis\p{L}*|doklad\p{L}*|objednav\p{L}*|vyuctovan\p{L}*/u, 'FAKTURA'],
+  [/zakon\p{L}*|vyhlas\p{L}*|nariaden\p{L}*|smernic\p{L}*|splatk\p{L}*|bod\p{L}*|ods|odsek\p{L}*|pism|clan\p{L}*|cl|priloh\p{L}*|stran\p{L}*|ponuk\p{L}*|polozk\p{L}*|riadok|riadku|tabulk\p{L}*|uznesen\p{L}*|sp|zn/u, null]
+]
+const DOC_NUMBER = '(?:[A-Z]{1,4}[-/ ]?)?\\d[\\d/-]*\\d'
+/** "zmluva … č. 123", "faktúra za … č. FV-2024-001": the nearest numbered noun before the "č." decides. */
+const docNumberAfterMarker = new RegExp(`(?<![\\p{L}])(?:č|c|čís|číslo|no|nr)\\.?\\s*:?\\s*(${DOC_NUMBER})(?![\\d\\p{L}]|[.,]\\d)`, 'dgiu')
+/** Table/label form: "Číslo zmluvy: 123", "Číslo faktúry\n2024015". */
+const docNumberLabel = new RegExp(
+  `(?<![\\p{L}])(?:číslo|č\\.)\\s+(zmluvy|faktúry|dokladu|dobropisu|objednávky)\\s*:?${HS}*\\n?${HS}*(${DOC_NUMBER})(?![\\d\\p{L}]|[.,]\\d)`,
+  'dgiu'
+)
+/** Headings like "Faktúra 2026008", "Dobropis č. 12/2024". */
+const docNumberHeading = new RegExp(
+  `(?<![\\p{L}])(faktúra|dobropis|zmluva)${HS}+(?:(?:č|číslo)\\.?${HS}*:?${HS}*)?(${DOC_NUMBER})(?![\\d\\p{L}]|[.,]\\d)`,
+  'dgiu'
+)
+const docNumbers: Recognizer = {
+  name: 'cislo-dokladu',
+  types: ['ZMLUVA', 'FAKTURA'],
+  find(text) {
+    const out: Entity[] = []
+    const push = (s: number, e: number, type: EntityType) => {
+      if (digitsOnly(text.slice(s, e)).length >= 3) out.push({ type, start: s, end: e, score: 0.9, text: text.slice(s, e), source: 'cislo-dokladu' })
+    }
+    for (const m of text.matchAll(docNumberLabel)) {
+      const [s, e] = span(m, 2)
+      push(s, e, /^zmluv/iu.test(m[1]) ? 'ZMLUVA' : 'FAKTURA')
+    }
+    for (const m of text.matchAll(docNumberHeading)) {
+      const [s, e] = span(m, 2)
+      push(s, e, /^zmluv/iu.test(m[1]) ? 'ZMLUVA' : 'FAKTURA')
+    }
+    for (const m of text.matchAll(docNumberAfterMarker)) {
+      const [s, e] = span(m, 1)
+      const before = fold(text.slice(Math.max(0, m.index - 70), m.index))
+      let best: { at: number; type: EntityType | null } | null = null
+      for (const [re, type] of NUMBERED) {
+        for (const w of before.matchAll(new RegExp(`(?<![\\p{L}])(?:${re.source})(?![\\p{L}])`, 'gu'))) {
+          if (!best || w.index > best.at) best = { at: w.index, type }
+        }
+      }
+      if (best?.type) push(s, e, best.type)
+    }
+    return out
+  }
+}
 
 // ─── Dates of birth ─────────────────────────────────────────────────────────
 
@@ -326,13 +413,26 @@ const LEGAL_FORM =
   '(?:spol\\.\\s*s\\s*r\\.\\s*o\\.?|s\\.\\s*r\\.\\s*o\\.?|a\\.\\s*s\\.?|k\\.\\s*s\\.?|v\\.\\s*o\\.\\s*s\\.?|n\\.\\s*o\\.?|[sš]\\.\\s*p\\.?|j\\.\\s*s\\.\\s*a\\.?|družstvo|GmbH|AG|Ltd\\.?|LLC|Inc\\.?|SE|s\\.\\s*e\\.|o\\.\\s*z\\.)'
 const COMPANY_WORD = `[${'\\p{Lu}'}\\d][\\p{L}\\d&'’+.\\-]*`
 const FIRMA_RE = new RegExp(
-  `(?<![\\p{L}\\d])((?:${COMPANY_WORD}\\s+){0,5}${COMPANY_WORD}),?\\s*${LEGAL_FORM}(?![\\p{L}])`,
+  // The legal form is a separate word ("Alfa AG"), not the end of one ("MAG", "BASE").
+  `(?<![\\p{L}\\d])((?:${COMPANY_WORD}\\s+){0,5}${COMPANY_WORD})(?:,\\s*|\\s+)${LEGAL_FORM}(?![\\p{L}])`,
   'gu'
 )
+const TITLE_RE = TITLES.map((t) => escapeRegExp(t).replace(/\\\.\s*/g, '\\.\\s*').replace(/ /g, '\\s*')).join('|')
+const PERSON_START = new RegExp(`^(?:${TITLE_RE})`, 'u')
 const firma = recognizer('firma', 'FIRMA', FIRMA_RE, (m, text, emit) => {
   let s = m.index
   const e = m.index + m[0].length
-  const words = m[1].split(/\s+/)
+  // Table cells come out as consecutive lines. When the lines above the company's last line look like
+  // a person (title or known first name), they are a separate cell – start the company on the last line.
+  const nl = m[1].lastIndexOf('\n')
+  if (nl !== -1) {
+    const above = m[1].slice(0, nl).trim()
+    if (PERSON_START.test(above) || FIRST_NAMES.includes(above.split(/\s+/)[0])) {
+      const tail = m[1].slice(nl + 1)
+      s = m.index + nl + 1 + (tail.length - tail.trimStart().length)
+    }
+  }
+  const words = text.slice(s, m.index + m[1].length).split(/\s+/).filter(Boolean)
   while (words.length > 1 && LEADING_STOPWORDS.has(fold(words[0].replace(/[:.,]$/, '')))) {
     const w = words.shift()!
     s = text.indexOf(words[0], s + w.length)
@@ -344,13 +444,12 @@ const firma = recognizer('firma', 'FIRMA', FIRMA_RE, (m, text, emit) => {
 // ─── People ─────────────────────────────────────────────────────────────────
 
 const NAME_WORD = `${UP}${LO}+(?:-${UP}${LO}+)?`
-const TITLE_RE = TITLES.map((t) => escapeRegExp(t).replace(/\\\.\s*/g, '\\.\\s*').replace(/ /g, '\\s*')).join('|')
 const POST_TITLE_RE = POST_TITLES.map(escapeRegExp).join('|')
 const titled = recognizer(
   'osoba-titul',
   'OSOBA',
   new RegExp(
-    `(?<![\\p{L}])(?:(?:${TITLE_RE})\\s*){1,3}(${NAME_WORD}(?:\\s+${NAME_WORD}){0,2})(?:,?\\s*(?:${POST_TITLE_RE}))*`,
+    `(?<![\\p{L}])(?:(?:${TITLE_RE})\\s*){1,3}(${NAME_WORD}(?:${HS}+${NAME_WORD}){0,2})(?:,?${HS}*(?:${POST_TITLE_RE}))*`,
     'gu'
   ),
   (m, _text, emit) => emit(m.index, m.index + m[0].length, 0.93)
@@ -397,7 +496,7 @@ const PERSON_CTX = [
 const contextPerson = recognizer(
   'osoba-kontext',
   'OSOBA',
-  new RegExp(`(?<![\\p{L}])(${NAME_WORD}(?:\\s+${NAME_WORD}){1,2})(?![\\p{L}])`, 'gu'),
+  new RegExp(`(?<![\\p{L}])(${NAME_WORD}(?:${HS}+${NAME_WORD}){1,2})(?![\\p{L}])`, 'gu'),
   (m, text, emit) => {
     const s = m.index
     const e = s + m[0].length
@@ -411,6 +510,7 @@ const contextPerson = recognizer(
 export const PATTERN_RECOGNIZERS: Recognizer[] = [
   rodneCislo,
   ico,
+  zivnostRegister,
   dic,
   icDph,
   doklad,
@@ -427,6 +527,8 @@ export const PATTERN_RECOGNIZERS: Recognizer[] = [
   adresa,
   pscCity,
   spz,
+  vin,
+  docNumbers,
   datumNar,
   firma,
   titled,

@@ -26,10 +26,13 @@ async function uniquePath(p: string): Promise<string> {
   }
 }
 
-export function outputName(input: string, ext: string): string {
-  const b = basename(input, extname(input))
-  return `${b}_anonymizovane.${ext}`
+/** Output file name; `stem` is the anonymized input name (without extension). */
+export function outputName(stem: string, ext: string): string {
+  return `${stem}_anonymizovane.${ext}`
 }
+
+/** Characters a placeholder or name must never introduce into a file name. */
+const unsafeFileChars = (s: string) => s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_')
 
 /**
  * Anonymize files as one batch (placeholders are consistent across all of them).
@@ -82,8 +85,17 @@ export async function processFiles(
 
   // Map batch progress back to files
   const sizes = loaded.map((l) => l.adapter.segments.length)
+  // The file name is anonymized with the same batch (a name in "Zmluva – Novák.pdf" would otherwise leak),
+  // as one extra trailing segment per document.
+  const stem = (idx: number) => basename(inputs[idx], extname(inputs[idx]))
+  // Names in file names are often glued ("fa_MgrJanNovak_2024"): detect on a spaced-out copy.
+  const spaced = (idx: number) =>
+    stem(idx)
+      .replace(/_+/g, ' ')
+      .replace(/(\p{Ll})(\p{Lu})/gu, '$1 $2')
+      .replace(/(\p{L})(\d)|(\d)(\p{L})/gu, (_m, a, b, c, d) => (a ? `${a} ${b}` : `${c} ${d}`))
   const batch = await anonymizeBatch(
-    loaded.map((l) => l.adapter.segments),
+    loaded.map((l) => [...l.adapter.segments, { text: spaced(l.idx) }]),
     { types: opts.types, customTerms: opts.customTerms, ner },
     (p) => {
       if (p.phase !== 'detect') return
@@ -101,7 +113,10 @@ export async function processFiles(
     const res = results[idx]
     onProgress({ input, stage: 'writing', progress: 0.5 })
     try {
-      const segResults = batch[k]
+      const segResults = batch[k].slice(0, -1)
+      // Keep the original file name unless something in it had to be hidden.
+      const named = batch[k][batch[k].length - 1]
+      const name = unsafeFileChars(named.entities.length ? named.output : stem(idx))
       const counts: Partial<Record<EntityType, number>> = {}
       const seen = new Set<string>()
       for (const r of segResults)
@@ -113,11 +128,13 @@ export async function processFiles(
         }
       res.counts = counts
       const dir = outDir ?? dirname(input)
-      const out = await uniquePath(join(dir, outputName(input, adapter.outputExt)))
+      const out = await uniquePath(join(dir, outputName(name, adapter.outputExt)))
       await writeFile(out, await adapter.write(segResults))
       res.outputs.push(out)
+      // Writing can add warnings too (removed attachments, fallbacks) – report them.
+      for (const w of adapter.warnings ?? []) if (!res.warnings.includes(w)) res.warnings.push(w)
       if (opts.exportText && adapter.toText) {
-        const md = await uniquePath(join(dir, outputName(input, 'md')))
+        const md = await uniquePath(join(dir, outputName(name, 'md')))
         await writeFile(md, adapter.toText(segResults), 'utf8')
         res.outputs.push(md)
       }

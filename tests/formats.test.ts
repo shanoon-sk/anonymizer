@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import JSZip from 'jszip'
 import ExcelJS from 'exceljs'
@@ -149,6 +149,30 @@ describe('DOCX', () => {
   })
 })
 
+describe('output file name', () => {
+  it('hides names found in the documents, with the same placeholders', async () => {
+    const input = join(dir, 'zmluva – Novák - final.docx')
+    await makeDocx(input)
+    const [res] = await processFiles([input], OPTS, null, {}, noop)
+    expect(res.error).toBeUndefined()
+    expect(basename(res.outputs[0])).toBe('zmluva – [OSOBA_1] - final_anonymizovane.docx')
+  })
+
+  it('also finds names glued together in the name ("fa_IngJanNovak_2024")', async () => {
+    const input = join(dir, 'fa_JanNovak_2024.docx')
+    await makeDocx(input)
+    const [res] = await processFiles([input], OPTS, null, {}, noop)
+    expect(basename(res.outputs[0])).toBe('fa [OSOBA_1] 2024_anonymizovane.docx')
+  })
+
+  it('keeps the name untouched when there is nothing to hide', async () => {
+    const input = join(dir, 'zmluva_o_dielo_v2.docx')
+    await makeDocx(input)
+    const [res] = await processFiles([input], OPTS, null, {}, noop)
+    expect(basename(res.outputs[0])).toBe('zmluva_o_dielo_v2_anonymizovane.docx')
+  })
+})
+
 describe('XLSX', () => {
   it('anonymizes typed columns, numbers, comments, sheet names and keeps formulas working', async () => {
     const input = join(dir, 'mzdy.xlsx')
@@ -194,6 +218,82 @@ describe('PDF', () => {
     expect(md).toContain('[IBAN_1]')
   })
 
+  // LLM ingestion (pdf.js, PyMuPDF…) reads text in content-stream order: placeholders must sit where the value was.
+  const TABLE = [
+    'BT /F1 12 Tf 50 780 Td (Obchodne meno) Tj ET',
+    'BT /F1 12 Tf 250 780 Td (Ing. Jan Novak) Tj ET',
+    'BT /F1 12 Tf 50 760 Td (ICO) Tj ET',
+    'BT /F1 12 Tf 250 760 Td (35763469) Tj ET',
+    'BT /F1 12 Tf 50 740 Td (Platba od Jan Novak prijata dna 1. 2. 2024.) Tj ET'
+  ].join('\n')
+  const EXPECTED_ORDER = 'Obchodne meno [OSOBA_1] ICO [ICO_1] Platba od [OSOBA_1] prijata dna 1. 2. 2024.'
+
+  async function makeTablePdf(path: string, rotate: 0 | 90 = 0) {
+    const doc = new mupdf.PDFDocument()
+    const font = doc.addSimpleFont(new mupdf.Font('Helvetica'), 'Latin')
+    const res = doc.addObject({ Font: { F1: font } })
+    // Two pages: several re-recorded pages once broke MuPDF's de-duplication on save (blank pages).
+    doc.insertPage(-1, doc.addPage([0, 0, 595, 842], rotate, res, TABLE))
+    doc.insertPage(-1, doc.addPage([0, 0, 595, 842], rotate, res, TABLE))
+    const page = doc.loadPage(0) as mupdf.PDFPage
+    page.createLink([400, 50, 500, 70], 'https://www.example.org/manual')
+    await writeFile(path, doc.saveToBuffer('compress').asUint8Array())
+  }
+  const flat = (s: string) => s.replace(/\s+/g, ' ').trim()
+
+  it('keeps placeholders in reading order in the text layer', async () => {
+    const input = join(dir, 'tabulka.pdf')
+    await makeTablePdf(input)
+    const [res] = await processFiles([input], OPTS, null, {}, noop)
+    expect(res.error).toBeUndefined()
+    const buf = new Uint8Array(await readFile(res.outputs[0]))
+    expect(flat(pdfText(buf))).toBe(`${EXPECTED_ORDER} ${EXPECTED_ORDER}`)
+    const raw = Buffer.from(mupdf.Document.openDocument(buf, 'application/pdf').asPDF()!.saveToBuffer('decompress').asUint8Array()).toString('latin1')
+    expect(raw).not.toContain('Novak')
+    expect(raw).not.toContain('35763469')
+  })
+
+  it('places placeholders where the values were on rotated pages and keeps links', async () => {
+    const input = join(dir, 'otocena.pdf')
+    await makeTablePdf(input, 90)
+    const [res] = await processFiles([input], OPTS, null, {}, noop)
+    expect(res.error).toBeUndefined()
+    const before = mupdf.Document.openDocument(new Uint8Array(await readFile(input)), 'application/pdf').loadPage(0)
+    const after = mupdf.Document.openDocument(new Uint8Array(await readFile(res.outputs[0])), 'application/pdf').loadPage(0)
+    expect(flat(after.toStructuredText('preserve-whitespace').asText())).toBe(EXPECTED_ORDER)
+    const was = before.search('35763469', undefined)[0][0]
+    const now = after.search('[ICO_1]', undefined)[0][0]
+    expect(Math.abs(now[0] - was[0])).toBeLessThan(3)
+    expect(Math.abs(now[1] - was[1])).toBeLessThan(3)
+    expect(after.getLinks().map((l) => l.getURI())).toEqual(['https://www.example.org/manual'])
+  })
+
+  it('removes embedded attachments (e.g. ISDOC invoice XML) and reports it', async () => {
+    const input = join(dir, 'faktura-isdoc.pdf')
+    const doc = makeTextPdfDoc(PDF_LINES)
+    const xml = '<Invoice><Name>Jan Novak</Name><ID>35763469</ID></Invoice>'
+    const spec = doc.addEmbeddedFile('invoice.isdoc', 'application/xml', new TextEncoder().encode(xml), new Date(), new Date())
+    // Register it in the catalog's name tree (addEmbeddedFile alone only creates the file object).
+    const names = doc.newArray()
+    names.push(doc.newString('invoice.isdoc'))
+    names.push(spec)
+    const tree = doc.newDictionary()
+    tree.put('Names', names)
+    const catNames = doc.newDictionary()
+    catNames.put('EmbeddedFiles', tree)
+    doc.getTrailer().get('Root').put('Names', catNames)
+    await writeFile(input, doc.saveToBuffer('compress').asUint8Array())
+    const src = mupdf.Document.openDocument(new Uint8Array(await readFile(input)), 'application/pdf').asPDF()!
+    expect(Object.keys(src.getEmbeddedFiles())).toEqual(['invoice.isdoc'])
+    const [res] = await processFiles([input], OPTS, null, {}, noop)
+    expect(res.error).toBeUndefined()
+    const out = mupdf.Document.openDocument(new Uint8Array(await readFile(res.outputs[0])), 'application/pdf').asPDF()!
+    expect(Object.keys(out.getEmbeddedFiles())).toEqual([])
+    const raw = Buffer.from(out.saveToBuffer('decompress').asUint8Array()).toString('latin1')
+    expect(raw).not.toContain('<Invoice>')
+    expect(res.warnings.join(' ')).toContain('invoice.isdoc')
+  })
+
   it.skipIf(!hasTess)('OCRs scanned pages and redacts the image pixels', async () => {
     const input = join(dir, 'sken.pdf')
     await makeScannedPdf(input)
@@ -207,6 +307,11 @@ describe('PDF', () => {
       expect(md).not.toContain('35763469')
       expect(md).toMatch(/\[ICO_1\]/)
       expect(md).toMatch(/\[IBAN_1\]/)
+      // The PDF gets an invisible OCR text layer in reading order, placeholders inline
+      const layer = flat(pdfText(new Uint8Array(await readFile(res.outputs[0]))))
+      expect(layer).toMatch(/Faktura c\. 2024015 Odberatel: \[OSOBA_1\]/)
+      expect(layer).toMatch(/ICO: \[ICO_1\]/)
+      expect(layer).not.toContain('35763469')
       // Re-OCR the output: the redacted values must be gone from the image itself
       const out = mupdf.Document.openDocument(new Uint8Array(await readFile(res.outputs[0])), 'application/pdf')
       const pix = out.loadPage(0).toPixmap(mupdf.Matrix.scale(300 / 72, 300 / 72), mupdf.ColorSpace.DeviceRGB, false)
