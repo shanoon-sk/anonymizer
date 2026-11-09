@@ -103,7 +103,8 @@ ${sumsText ? `<details><summary>Kontrolné súčty SHA-256</summary><pre>${escap
 
 const escapeHtml = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
-const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="115" fill="#0f766e"/><text x="256" y="318" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="188" letter-spacing="-6" fill="#fff">SHN</text></svg>`
+// Anonymo mark (same as resources/brand/icon.svg): Shanoon teal + Lucide "hat-glasses" (ISC).
+const ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="115" fill="#0f766e"/><g transform="translate(106 106) scale(12.5)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18a2 2 0 0 0-4 0"/><path d="m19 11-2.11-6.657a2 2 0 0 0-2.752-1.148l-1.276.61A2 2 0 0 1 12 4H8.5a2 2 0 0 0-1.925 1.456L5 11"/><path d="M2 11h20"/><circle cx="17" cy="18" r="3"/><circle cx="7" cy="18" r="3"/></g></svg>`
 
 const STYLE = `<style>
 :root{--bg:#fff;--muted:#f8fafc;--border:#e2e8f0;--ink:#0f172a;--body:#475569;--meta:#64748b;--primary:#0f766e;--primary-hover:#0d9488;--primary-light:#f0fdfa;--gold:#b58a3e;color-scheme:light}

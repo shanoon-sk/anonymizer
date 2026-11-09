@@ -1,35 +1,20 @@
-// Renders the Shanoon "SHN" mark (as in resources/brand/icon.svg: teal rounded square, white bold text)
-// to PNG app icons and Microsoft Store tiles using MuPDF – no extra tools needed.
+// Renders the Anonymo mark (resources/brand/icon.svg: Shanoon teal rounded square + Lucide "hat-glasses")
+// to PNG app icons and Microsoft Store tiles using sharp (already installed via @huggingface/transformers).
 // Run: node scripts/make-icon.mjs
-import { writeFile, mkdir } from 'node:fs/promises'
-import * as mupdf from 'mupdf'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import sharp from 'sharp'
 
 const S = 512
-const R = 115
-const k = 0.5523 * R
-const f = new mupdf.Font('Helvetica-Bold')
-const textWidth = [...'SHN'].reduce((w, c) => w + f.advanceGlyph(f.encodeCharacter(c)), 0) * 188 - 6 * 2
+const svg = await readFile('resources/brand/icon.svg', 'utf8')
+const inner = svg.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '')
 
-/** Content stream drawing the 512×512 mark, in a coordinate system with origin bottom-left. */
-const mark = () => {
-  const path = [
-    `${R} 0 m`, `${S - R} 0 l`, `${S - R + k} 0 ${S} ${R - k} ${S} ${R} c`, `${S} ${S - R} l`,
-    `${S} ${S - R + k} ${S - R + k} ${S} ${S - R} ${S} c`, `${R} ${S} l`, `${R - k} ${S} 0 ${S - R + k} 0 ${S - R} c`,
-    `0 ${R} l`, `0 ${R - k} ${R - k} 0 ${R} 0 c`, 'h'
-  ].join(' ')
-  return `0.0588 0.4627 0.4314 rg ${path} f\nBT 1 g /F1 188 Tf -6 Tc ${(S - textWidth) / 2} ${S - 318} Td (SHN) Tj ET`
-}
-
-/** Render a w×h PNG with the mark centred, occupying `scale` of the shorter side. */
+/** Render a w×h PNG with the mark centred, occupying `scale` of the shorter side (transparent around it). */
 function render(w, h, scale = 1) {
-  const doc = new mupdf.PDFDocument()
-  const font = doc.addSimpleFont(new mupdf.Font('Helvetica-Bold'), 'Latin')
-  const res = doc.addObject({ Font: { F1: font } })
   const size = Math.min(w, h) * scale
   const s = size / S
-  const content = `q ${s} 0 0 ${s} ${(w - size) / 2} ${(h - size) / 2} cm\n${mark()}\nQ`
-  doc.insertPage(-1, doc.addPage([0, 0, w, h], 0, res, content))
-  return doc.loadPage(0).toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, true).asPNG()
+  const wrapped = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+<g transform="translate(${(w - size) / 2} ${(h - size) / 2}) scale(${s})">${inner}</g></svg>`
+  return sharp(Buffer.from(wrapped)).png().toBuffer()
 }
 
 await mkdir('build/appx', { recursive: true })
@@ -47,6 +32,6 @@ const outputs = [
   ['build/appx/LargeTile.png', 310, 310, 0.6]
 ]
 for (const [out, w, h, scale] of outputs) {
-  await writeFile(out, render(w, h, scale))
+  await writeFile(out, await render(w, h, scale))
   console.log('✓', out, `${w}×${h}`)
 }

@@ -71,6 +71,29 @@ export function Card({ className, children }: { className?: string; children: Re
   return <div className={cx('rounded-[var(--radius-card)] border border-border bg-surface', className)}>{children}</div>
 }
 
+/** Anonymo app mark: Shanoon teal rounded square with the Lucide "hat-glasses" glyph (same as resources/brand/icon.svg). */
+export function AnonymoMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 512 512" className={className} aria-hidden>
+      <rect width="512" height="512" rx="115" fill="#0f766e" />
+      <g
+        transform="translate(106 106) scale(12.5)"
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M14 18a2 2 0 0 0-4 0" />
+        <path d="m19 11-2.11-6.657a2 2 0 0 0-2.752-1.148l-1.276.61A2 2 0 0 1 12 4H8.5a2 2 0 0 0-1.925 1.456L5 11" />
+        <path d="M2 11h20" />
+        <circle cx="17" cy="18" r="3" />
+        <circle cx="7" cy="18" r="3" />
+      </g>
+    </svg>
+  )
+}
+
 /** Shanoon brand mark (teal rounded square with "SHN"), as on shanoon.sk. */
 export function ShanoonMark({ className }: { className?: string }) {
   return (

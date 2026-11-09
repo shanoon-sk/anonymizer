@@ -5,7 +5,7 @@ import { sk } from './i18n'
 import { DropZone } from './components/DropZone'
 import { FileRow, type FileItem } from './components/FileList'
 import { OutputLocation, TypeSelector, type Options } from './components/OptionsPanel'
-import { Button, ShanoonMark } from './components/ui'
+import { AnonymoMark, Button, ShanoonMark } from './components/ui'
 
 const SUPPORTED = new Set(['pdf', 'docx', 'xlsx', 'xlsm'])
 
@@ -100,7 +100,7 @@ export function App() {
       {/* Header */}
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-border px-6">
         <div className="flex items-center gap-3">
-          <ShanoonMark className="size-9" />
+          <AnonymoMark className="size-9" />
           <div className="leading-tight">
             <h1 className="text-[17px] font-bold tracking-tight text-ink">{sk.appName}</h1>
             <p className="text-[12px] text-meta">{sk.by}</p>
