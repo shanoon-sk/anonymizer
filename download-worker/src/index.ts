@@ -9,7 +9,7 @@ interface Env {
 }
 
 // Bump on each release (files are uploaded to R2 under v<version>/).
-const VERSION = '0.1.0'
+const VERSION = '0.1.1'
 const FILES = {
   windows: `v${VERSION}/Anonymo-Setup-${VERSION}.exe`,
   mac: `v${VERSION}/Anonymo-${VERSION}-arm64.dmg`,
