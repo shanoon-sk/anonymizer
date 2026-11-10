@@ -108,6 +108,206 @@ function textInsideOverlays(page: MuPDF.Page, overlays: Overlay[]): string[] {
 
 const num = (x: number) => (Math.round(x * 1000) / 1000).toString()
 
+const fallbackFonts = new Map<string, MuPDF.Font>()
+
+/**
+ * Ligatures ("fi", "ti") as their separate letters. MuPDF's PDF writer derives ToUnicode from the font's own
+ * cmap, where a ligature glyph has no entry – extractors then read "�nančnom" instead of "finančnom".
+ * Letters missing from a font subset are taken from a similar standard font.
+ */
+function splitLigatures(mupdf: Mupdf, text: MuPDF.Text, t3: Type3Painter): MuPDF.Text {
+  type G = { font: MuPDF.Font; trm: MuPDF.Matrix; gid: number; uni: number; wmode: number; extra: number[] }
+  const glyphs: G[] = []
+  text.walk({
+    showGlyph(font, trm, gid, uni, wmode) {
+      const prev = glyphs[glyphs.length - 1]
+      if (gid < 0 && prev && prev.font === font) prev.extra.push(uni)
+      else glyphs.push({ font, trm, gid, uni, wmode, extra: [] })
+    }
+  })
+  if (!glyphs.some((g) => g.extra.length)) return text
+  const out = new mupdf.Text()
+  for (const g of glyphs) {
+    if (!g.extra.length || g.wmode || t3.isType3(g.font)) {
+      out.showGlyph(g.font, g.trm, g.gid, g.uni, g.wmode)
+      for (const u of g.extra) out.showGlyph(g.font, g.trm, -1, u, g.wmode)
+      continue
+    }
+    let x = 0
+    for (const u of [g.uni, ...g.extra]) {
+      let font = g.font
+      let gid = font.encodeCharacter(u)
+      if (gid <= 0) {
+        const name = `${font.isSerif() ? 'Times' : 'Helvetica'}${font.isBold() ? '-Bold' : ''}`
+        if (!fallbackFonts.has(name)) fallbackFonts.set(name, new mupdf.Font(name))
+        font = fallbackFonts.get(name)!
+        gid = font.encodeCharacter(u)
+      }
+      const [a, b, c, d, e, f] = g.trm
+      out.showGlyph(font, [a, b, c, d, e + x * a, f + x * b], gid, u, 0)
+      x += font.advanceGlyph(gid, 0)
+    }
+  }
+  return out
+}
+
+/**
+ * MuPDF's PDF writer cannot write text in Type 3 fonts (Chrome/Skia uses them for fonts it cannot embed,
+ * e.g. variable fonts). Such glyphs are re-drawn from their own glyph procedures as vector paths, and an
+ * invisible copy of their characters keeps the text readable for text extractors.
+ */
+class Type3Painter {
+  private fonts = new Map<string, MuPDF.PDFObject>()
+  private scratch: MuPDF.PDFDocument
+  private glyphs = new Map<string, MuPDF.PDFPage | null>()
+  private static readonly UNIT: MuPDF.Matrix = [1, 0, 0, -1, 0, 1] // transform of a 1×1 MediaBox page
+
+  constructor(
+    private mupdf: Mupdf,
+    page: MuPDF.PDFPage,
+    private labelFont: MuPDF.Font
+  ) {
+    this.scratch = new mupdf.PDFDocument()
+    const seen = new Set<string>()
+    const collect = (res: MuPDF.PDFObject) => {
+      if (!res.isDictionary()) return
+      res.get('Font').forEach((f: MuPDF.PDFObject) => {
+        const d = f.resolve()
+        if (d.get('Subtype').asName() !== 'Type3') return
+        if (f.isIndirect()) this.fonts.set(`Type3 (${f.asIndirect()} 0 R)`, d)
+        const name = d.get('Name')
+        if (name.isName()) this.fonts.set(name.asName(), d)
+      })
+      res.get('XObject').forEach((x: MuPDF.PDFObject) => {
+        const key = x.isIndirect() ? String(x.asIndirect()) : ''
+        if (key && seen.has(key)) return
+        seen.add(key)
+        collect(x.resolve().get('Resources'))
+      })
+    }
+    collect(page.getObject().get('Resources'))
+    this.pageResources = page.getObject().get('Resources')
+  }
+  private pageResources: MuPDF.PDFObject
+
+  isType3(font: MuPDF.Font) {
+    return this.fonts.has(font.getName()) || font.getName().startsWith('Type3')
+  }
+
+  /** Text without its Type 3 glyphs, the Type 3 glyphs painted (in order) through `out`. */
+  fillText(out: MuPDF.Device, text: MuPDF.Text, ctm: MuPDF.Matrix, cs: MuPDF.ColorSpace, color: MuPDF.Color, alpha: number) {
+    const { mupdf } = this
+    let normal: MuPDF.Text | null = null
+    let hidden: MuPDF.Text | null = null
+    const flushNormal = () => {
+      if (normal) out.fillText(normal, ctm, cs, color, alpha)
+      normal = null
+    }
+    const flushHidden = () => {
+      if (hidden) out.fillText(hidden, ctm, mupdf.ColorSpace.DeviceRGB, [0, 0, 0], 0)
+      hidden = null
+    }
+    text.walk({
+      showGlyph: (font, trm, gid, uni, wmode) => {
+        if (!this.isType3(font)) {
+          flushHidden()
+          ;(normal ??= new mupdf.Text()).showGlyph(font, trm, gid, uni, wmode)
+          return
+        }
+        flushNormal()
+        if (gid >= 0) this.paint(out, font, trm, gid, ctm, cs, color, alpha)
+        if (uni > 0) {
+          const lg = this.labelFont.encodeCharacter(uni)
+          ;(hidden ??= new mupdf.Text()).showGlyph(this.labelFont, trm, lg, uni, wmode)
+        }
+      }
+    })
+    flushNormal()
+    flushHidden()
+  }
+
+  /** Text without its Type 3 glyphs (for invisible text and clips). Null if it had any. */
+  withoutType3(text: MuPDF.Text): { text: MuPDF.Text; dropped: boolean } {
+    const t = new this.mupdf.Text()
+    let dropped = false
+    text.walk({
+      showGlyph: (font, trm, gid, uni, wmode) => {
+        if (this.isType3(font)) dropped = true
+        else t.showGlyph(font, trm, gid, uni, wmode)
+      }
+    })
+    return { text: t, dropped }
+  }
+
+  private paint(
+    out: MuPDF.Device,
+    font: MuPDF.Font,
+    trm: MuPDF.Matrix,
+    gid: number,
+    ctm: MuPDF.Matrix,
+    cs: MuPDF.ColorSpace,
+    color: MuPDF.Color,
+    alpha: number
+  ) {
+    const dict = this.fonts.get(font.getName())
+    if (!dict) throw new Error(`Type 3 font not found: ${font.getName()}`)
+    const key = `${font.getName()}|${gid}|${cs.getNumberOfComponents()}:${color.join(',')}|${alpha}`
+    let glyph = this.glyphs.get(key)
+    if (glyph === undefined) {
+      glyph = this.makeGlyph(dict, gid, cs, color, alpha)
+      this.glyphs.set(key, glyph)
+    }
+    if (!glyph) return
+    const fm = dict.get('FontMatrix')
+    const fontMatrix: MuPDF.Matrix = fm.isArray()
+      ? [0, 1, 2, 3, 4, 5].map((i) => fm.get(i).asNumber()) as unknown as MuPDF.Matrix
+      : [0.001, 0, 0, 0.001, 0, 0]
+    const { Matrix } = this.mupdf
+    const m = Matrix.concat(Matrix.concat(fontMatrix, trm), ctm)
+    glyph.runPageContents(out, Matrix.concat(Matrix.invert(Type3Painter.UNIT), m))
+  }
+
+  /** A scratch page whose content is the glyph procedure, in the text's colour. Null for an empty glyph. */
+  private makeGlyph(dict: MuPDF.PDFObject, code: number, cs: MuPDF.ColorSpace, color: MuPDF.Color, alpha: number) {
+    // MuPDF loads Type 3 fonts with glyph id = character code (0–255).
+    let name: string | null = null
+    const diffs = dict.get('Encoding').get('Differences')
+    if (diffs.isArray()) {
+      let c = 0
+      for (let i = 0; i < diffs.length; i++) {
+        const v = diffs.get(i)
+        if (v.isNumber()) c = v.asNumber()
+        else if (v.isName()) {
+          if (c === code) name = v.asName()
+          c++
+        }
+      }
+    }
+    const proc = name ? dict.get('CharProcs').get(name) : null
+    if (!proc || !proc.isStream()) return null
+    const body = proc.readStream().asString().replace(/^\s*(?:[-+.\d]+\s+){2,6}d[01]\b/, '')
+    const n = cs.getNumberOfComponents()
+    const c = color.map(num).join(' ')
+    const setColor = n === 1 ? `${c} g ${c} G` : n === 3 ? `${c} rg ${c} RG` : n === 4 ? `${c} k ${c} K` : ''
+    const s = this.scratch
+    const fontRes = dict.get('Resources')
+    const res = s.graftObject(fontRes.isDictionary() ? fontRes : this.pageResources.isDictionary() ? this.pageResources : s.newDictionary())
+    let gs = ''
+    if (alpha < 1) {
+      const ext = s.newDictionary()
+      ext.put('ca', alpha)
+      ext.put('CA', alpha)
+      const all = res.get('ExtGState').isDictionary() ? res.get('ExtGState') : s.newDictionary()
+      all.put('AnonT3Alpha', s.addObject(ext))
+      res.put('ExtGState', all)
+      gs = '/AnonT3Alpha gs'
+    }
+    const pageObj = s.addPage([0, 0, 1, 1], 0, res, `q ${gs} ${setColor}\n${body}\nQ`)
+    s.insertPage(-1, pageObj)
+    return s.loadPage(s.countPages() - 1) as MuPDF.PDFPage
+  }
+}
+
 /**
  * Re-record the page's content through a filtering device: glyphs inside overlay boxes are dropped and the
  * box + placeholder are drawn at that exact point of the stream. The recorded content replaces the page's
@@ -144,14 +344,17 @@ export function rewritePageInOrder(
     t.showString(labelFont, labelMatrix(rect, label, widthAt1, anchors.get(k)), label)
     out.fillText(t, id, rgb, INK_RGB, 1)
   }
+  const t3 = new Type3Painter(mupdf, page, labelFont)
   const emit = (pieces: Piece[], show: (t: MuPDF.Text) => void) => {
-    for (const p of pieces) 'text' in p ? show(p.text) : draw(p.overlay)
+    for (const p of pieces) 'text' in p ? show(splitLigatures(mupdf, p.text, t3)) : draw(p.overlay)
   }
   // Clip operations must stay balanced with popClip: always forward one (possibly empty) text.
   const keptOnly = (text: MuPDF.Text, ctm: MuPDF.Matrix) => {
     const t = new mupdf.Text()
     for (const p of splitText(mupdf, text, ctm, overlays, anchors))
-      if ('text' in p) p.text.walk({ showGlyph: (f, m, g, u, w) => t.showGlyph(f, m, g, u, w) })
+      if ('text' in p) splitLigatures(mupdf, p.text, t3).walk({ showGlyph: (f, m, g, u, w) => t.showGlyph(f, m, g, u, w) })
+    // A clip by Type 3 glyphs cannot be written; give up on this page (the caller falls back).
+    if (t3.withoutType3(t).dropped) throw new Error('clip by Type 3 text')
     return t
   }
 
@@ -163,11 +366,15 @@ export function rewritePageInOrder(
     clipPath: (...a: Parameters<D['clipPath']>) => out.clipPath(...a),
     clipStrokePath: (...a: Parameters<D['clipStrokePath']>) => out.clipStrokePath(...a),
     fillText: (...[text, ctm, cs, color, alpha]: Parameters<D['fillText']>) =>
-      emit(splitText(mupdf, text, ctm, overlays, anchors), (t) => out.fillText(t, ctm, cs, color, alpha)),
+      emit(splitText(mupdf, text, ctm, overlays, anchors), (t) => t3.fillText(out, t, ctm, cs, color, alpha)),
     strokeText: (...[text, stroke, ctm, cs, color, alpha]: Parameters<D['strokeText']>) =>
-      emit(splitText(mupdf, text, ctm, overlays, anchors), (t) => out.strokeText(t, stroke, ctm, cs, color, alpha)),
+      emit(splitText(mupdf, text, ctm, overlays, anchors), (t) => {
+        const plain = t3.withoutType3(t)
+        if (plain.dropped) t3.fillText(out, t, ctm, cs, color, alpha) // outlined Type 3 text: drawn filled
+        else out.strokeText(t, stroke, ctm, cs, color, alpha)
+      }),
     ignoreText: (...[text, ctm]: Parameters<D['ignoreText']>) =>
-      emit(splitText(mupdf, text, ctm, overlays, anchors), (t) => out.ignoreText(t, ctm)),
+      emit(splitText(mupdf, text, ctm, overlays, anchors), (t) => out.ignoreText(t3.withoutType3(t).text, ctm)),
     clipText: (...[text, ctm]: Parameters<D['clipText']>) => out.clipText(keptOnly(text, ctm), ctm),
     clipStrokeText: (...[text, stroke, ctm]: Parameters<D['clipStrokeText']>) =>
       out.clipStrokeText(keptOnly(text, ctm), stroke, ctm),
@@ -187,12 +394,17 @@ export function rewritePageInOrder(
   }
   // mupdf's callback interface is not exported; the callbacks above are typed from Device's own methods.
   const dev = new mupdf.Device(callbacks as never)
-  page.runPageContents(dev, id)
-  // Boxes whose glyphs were never seen in a fill (e.g. only used as a clip) are still covered.
-  overlays.forEach((_, k) => draw(k))
-  dev.close()
-  writer.endPage()
-  writer.close()
+  try {
+    page.runPageContents(dev, id)
+    // Boxes whose glyphs were never seen in a fill (e.g. only used as a clip) are still covered.
+    overlays.forEach((_, k) => draw(k))
+    dev.close()
+    writer.endPage()
+    writer.close()
+  } catch {
+    // Content the PDF writer cannot reproduce: the page is left untouched for the caller's fallback.
+    return false
+  }
 
   // Graft the recorded page into the original document as a Form XObject.
   const src = mupdf.Document.openDocument(buf.asUint8Array().slice(), 'application/pdf').asPDF()!

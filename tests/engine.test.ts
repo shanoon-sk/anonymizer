@@ -104,6 +104,11 @@ describe('regressions from real documents', () => {
     expect(await out('so spoločnosťou Gama\nDelta s. r. o. dňa')).toBe('so spoločnosťou [FIRMA_1] dňa')
   })
 
+  it('table cells above a company are not part of its name', async () => {
+    const t = '4.2 Zmluva\nÚdaj\nHodnota\nPrenajímateľ\nDanubia Leasing, a. s.\nČíslo zmluvy'
+    expect(await out(t)).toBe('4.2 Zmluva\nÚdaj\nHodnota\nPrenajímateľ\n[FIRMA_1]\nČíslo zmluvy')
+  })
+
   it('two addresses in adjacent table cells are kept apart', async () => {
     const t = 'Bulíkova 2679/3, 851 04 \nBratislava-Petržalka \n\nBudatínska 3230/16A, 851 06 Bratislava - \nmestská časť Petržalka \n'
     const o = await out(t)

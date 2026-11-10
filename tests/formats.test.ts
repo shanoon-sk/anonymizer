@@ -268,6 +268,62 @@ describe('PDF', () => {
     expect(after.getLinks().map((l) => l.getURI())).toEqual(['https://www.example.org/manual'])
   })
 
+  // Chrome prints fonts it cannot embed (e.g. variable fonts) as Type 3 fonts, which MuPDF's PDF writer
+  // cannot write; ligatures ("fi") lost their text because the writer's ToUnicode comes from the font cmap.
+  it('handles Type 3 fonts and ligatures without falling back, text stays readable', async () => {
+    const input = join(dir, 'chrome.pdf')
+    const doc = new mupdf.PDFDocument()
+    const helv = doc.addSimpleFont(new mupdf.Font('Helvetica'), 'Latin')
+    const box = '600 0 0 0 500 700 d1\n50 0 400 700 re f'
+    const t3 = doc.addObject({
+      Type: 'Font',
+      Subtype: 'Type3',
+      FontMatrix: [0.001, 0, 0, 0.001, 0, 0],
+      FontBBox: [0, 0, 600, 700],
+      FirstChar: 65,
+      LastChar: 66,
+      Widths: [600, 600],
+      Encoding: { Type: 'Encoding', Differences: [65, doc.newName('A'), doc.newName('B')] },
+      CharProcs: { A: doc.addStream(box, {}), B: doc.addStream(box, {}) },
+      Resources: {}
+    })
+    const times = new mupdf.Font('Times-Roman')
+    const t0 = doc.addFont(times)
+    const fi = times.encodeCharacter(0xfb01)
+    const hex = (g: number) => g.toString(16).padStart(4, '0')
+    // ToUnicode: the ligature glyph maps to the two letters "fi"; "nan" maps to itself.
+    const cids = [...'nan'].map((c) => times.encodeCharacter(c.charCodeAt(0)))
+    const cmap = [
+      '/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /T def /CMapType 2 def',
+      '1 begincodespacerange <0000> <FFFF> endcodespacerange',
+      `${1 + 2} beginbfchar <${hex(fi)}> <00660069> <${hex(cids[0])}> <006E> <${hex(cids[1])}> <0061> endbfchar`,
+      'endcmap CMapName currentdict /CMap defineresource pop end end'
+    ].join('\n')
+    t0.put('ToUnicode', doc.addStream(cmap, {}))
+    const res = doc.addObject({ Font: { F1: helv, F3: t3, F0: t0 } })
+    const content = [
+      'BT /F3 14 Tf 50 800 Td (AB) Tj ET',
+      'BT /F1 12 Tf 50 780 Td (Odberatel: Jan Novak, ICO 35763469) Tj ET',
+      `BT /F0 12 Tf 50 760 Td <${hex(fi)}${cids.map(hex).join('')}> Tj ET`
+    ].join('\n')
+    doc.insertPage(-1, doc.addPage([0, 0, 595, 842], 0, res, content))
+    await writeFile(input, doc.saveToBuffer('compress').asUint8Array())
+
+    const [res2] = await processFiles([input], OPTS, null, {}, noop)
+    expect(res2.error).toBeUndefined()
+    expect(res2.warnings.join(' ')).not.toContain('náhradný režim')
+    const buf = new Uint8Array(await readFile(res2.outputs[0]))
+    const text = flat(pdfText(buf))
+    expect(text).toBe('AB Odberatel: [OSOBA_1], ICO [ICO_1] finan')
+    // The Type 3 glyphs are still drawn (as paths): the page is not blank where they were.
+    const pix = mupdf.Document.openDocument(buf, 'application/pdf').loadPage(0).toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceGray)
+    const px = pix.getPixels()
+    const w = pix.getWidth()
+    let dark = 0
+    for (let y = 30; y < 42; y++) for (let x = 50; x < 66; x++) if (px[y * w + x] < 128) dark++
+    expect(dark).toBeGreaterThan(50)
+  })
+
   it('removes embedded attachments (e.g. ISDOC invoice XML) and reports it', async () => {
     const input = join(dir, 'faktura-isdoc.pdf')
     const doc = makeTextPdfDoc(PDF_LINES)

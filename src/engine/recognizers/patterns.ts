@@ -422,14 +422,19 @@ const PERSON_START = new RegExp(`^(?:${TITLE_RE})`, 'u')
 const firma = recognizer('firma', 'FIRMA', FIRMA_RE, (m, text, emit) => {
   let s = m.index
   const e = m.index + m[0].length
-  // Table cells come out as consecutive lines. When the lines above the company's last line look like
-  // a person (title or known first name), they are a separate cell – start the company on the last line.
+  // Table cells come out as consecutive lines ("Údaj\nHodnota\nPrenajímateľ\nDanubia Leasing, a. s.").
+  // Start the company on its last line when that line already has a multi-word name, or when the lines
+  // above look like a person (title or known first name). A one-word last line may be a wrapped name:
+  // it keeps at most the one line above it.
   const nl = m[1].lastIndexOf('\n')
   if (nl !== -1) {
+    const tail = m[1].slice(nl + 1)
     const above = m[1].slice(0, nl).trim()
-    if (PERSON_START.test(above) || FIRST_NAMES.includes(above.split(/\s+/)[0])) {
-      const tail = m[1].slice(nl + 1)
+    if (tail.trim().split(/\s+/).length >= 2 || PERSON_START.test(above) || FIRST_NAMES.includes(above.split(/\s+/)[0])) {
       s = m.index + nl + 1 + (tail.length - tail.trimStart().length)
+    } else {
+      const nl2 = m[1].lastIndexOf('\n', nl - 1)
+      if (nl2 !== -1) s = m.index + nl2 + 1
     }
   }
   const words = text.slice(s, m.index + m[1].length).split(/\s+/).filter(Boolean)
