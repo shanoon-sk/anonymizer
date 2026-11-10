@@ -62,18 +62,27 @@ Installers live in the R2 bucket `anonymo` under `v<version>/` and are served by
 `download-worker/` at https://anonymo.shanoon.workers.dev (download page, `/windows`, `/mac`,
 resumable downloads, edge-cached). Free tier covers this usage (R2 egress is free).
 
-Release a new version:
+Release a new version: bump `"version"` in `package.json`, commit, then tag and push:
 
 ```bash
-# 1. bump "version" in package.json, build installers (Windows ideally on Windows/CI)
-# 2. upload
-cd dist && shasum -a 256 *.exe *.dmg > SHA256SUMS.txt
+git tag v<version> && git push origin v<version>
+```
+
+`.github/workflows/release.yml` then builds the installers (via `build.yml`), uploads the `.exe`,
+the `.dmg` and `SHA256SUMS.txt` to R2 under `v<version>/`, and redeploys the worker with
+`--var VERSION:<version>`, so `/windows` and `/mac` point at the new files. It refuses to run if the
+tag doesn't match `package.json` or the version is already in R2. It needs the secrets
+`CLOUDFLARE_API_TOKEN` (Workers R2 Storage: Edit + Workers Scripts: Edit) and `CLOUDFLARE_ACCOUNT_ID`.
+
+Manual fallback, from `dist/`:
+
+```bash
+shasum -a 256 *.exe *.dmg > SHA256SUMS.txt
 for f in *.exe *.dmg SHA256SUMS.txt; do
   npx wrangler r2 object put "anonymo/v<version>/$f" --file "$f" --remote \
     --content-disposition "attachment; filename=\"$f\""
 done
-# 3. bump VERSION in download-worker/src/index.ts, then
-cd ../download-worker && npx wrangler deploy
+cd ../download-worker && npx wrangler deploy --var VERSION:<version>
 ```
 
 `wrangler r2 object put` accepts files up to 300 MiB; the DMG uses LZFSE compression to stay below it.

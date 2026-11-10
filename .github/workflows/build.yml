@@ -1,8 +1,8 @@
 name: Build installers
 
+# Tags are built by release.yml, which calls this workflow and then publishes to the CDN.
 on:
-  push:
-    tags: ['v*']
+  workflow_call:
   workflow_dispatch:
 
 permissions:

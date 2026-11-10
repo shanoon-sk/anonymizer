@@ -6,15 +6,17 @@
 
 interface Env {
   RELEASES: R2Bucket
+  // The release /windows and /mac point at. Set by the release workflow (`wrangler deploy --var`);
+  // wrangler.toml holds the value for a manual deploy.
+  VERSION: string
 }
 
-// Bump on each release (files are uploaded to R2 under v<version>/).
-const VERSION = '0.1.1'
-const FILES = {
-  windows: `v${VERSION}/Anonymo-Setup-${VERSION}.exe`,
-  mac: `v${VERSION}/Anonymo-${VERSION}-arm64.dmg`,
-  sums: `v${VERSION}/SHA256SUMS.txt`
-}
+// Files are uploaded to R2 under v<version>/ by .github/workflows/release.yml.
+const files = (version: string) => ({
+  windows: `v${version}/Anonymo-Setup-${version}.exe`,
+  mac: `v${version}/Anonymo-${version}-arm64.dmg`,
+  sums: `v${version}/SHA256SUMS.txt`
+})
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -22,6 +24,7 @@ export default {
     const url = new URL(req.url)
     const path = decodeURIComponent(url.pathname.replace(/^\/+/, ''))
 
+    const FILES = files(env.VERSION)
     if (path === '') return page(req, env)
     if (path === 'sukromie' || path === 'privacy') return privacy(req)
     if (path === 'windows' || path === 'mac') return Response.redirect(`${url.origin}/${FILES[path]}`, 302)
@@ -74,6 +77,8 @@ function parseRange(h: string | null): R2Range | undefined {
 const mb = (n: number) => `${Math.round(n / 1e6)} MB`
 
 async function page(req: Request, env: Env): Promise<Response> {
+  const VERSION = env.VERSION
+  const FILES = files(VERSION)
   const [win, mac, sums] = await Promise.all([env.RELEASES.head(FILES.windows), env.RELEASES.head(FILES.mac), env.RELEASES.get(FILES.sums)])
   const sumsText = sums ? await sums.text() : ''
   const html = `<!doctype html>

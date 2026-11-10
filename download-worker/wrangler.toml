@@ -7,3 +7,6 @@ preview_urls = false
 [[r2_buckets]]
 binding = "RELEASES"
 bucket_name = "anonymo"
+
+[vars]
+VERSION = "0.1.1"
