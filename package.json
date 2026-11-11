@@ -1,7 +1,7 @@
 {
   "name": "anonymo",
   "productName": "Anonymo",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Offline anonymizácia PDF, Word a Excel dokumentov pred použitím v ChatGPT alebo Claude.",
   "author": "Shanoon",
   "license": "AGPL-3.0-or-later",
