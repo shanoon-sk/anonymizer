@@ -1,0 +1,75 @@
+name: Build macOS installer
+
+# The Apple Silicon DMG, built on an Intel runner: GitHub's macOS arm64 pool (macos-latest) is often out
+# of capacity – jobs there were never picked up ("not acquired by Runner … even after multiple attempts").
+# electron-builder cross-builds arm64; only sharp's native binary has to be added for arm64 by hand.
+# Kept apart from build.yml so a slow macOS queue never holds up the Windows build.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mac:
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # npm only installs the host's (x64) sharp binary. Add the arm64 one at the lockfile's version and
+      # integrity; extracting it keeps the rest of the tree (esbuild etc. must stay x64 for the build).
+      - name: Add arm64 sharp binaries
+        run: |
+          mkdir -p "$RUNNER_TEMP/arm64"
+          for pkg in @img/sharp-darwin-arm64 @img/sharp-libvips-darwin-arm64; do
+            read -r version integrity < <(node -e '
+              const l = require("./package-lock.json").packages["node_modules/" + process.argv[1]]
+              if (!l) { console.error("not in package-lock: " + process.argv[1]); process.exit(1) }
+              console.log(l.version, l.integrity)' "$pkg")
+            tgz=$(npm pack "$pkg@$version" --pack-destination "$RUNNER_TEMP/arm64" --silent)
+            actual="sha512-$(openssl dgst -sha512 -binary "$RUNNER_TEMP/arm64/$tgz" | base64)"
+            [ "$actual" = "$integrity" ] || { echo "::error::$pkg@$version integrity mismatch"; exit 1; }
+            mkdir -p "node_modules/$pkg"
+            tar -xzf "$RUNNER_TEMP/arm64/$tgz" -C "node_modules/$pkg" --strip-components=1
+            echo "added $pkg@$version"
+          done
+
+      - name: Cache offline assets (NER model, OCR data)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            resources/models
+            resources/tessdata
+          key: assets-${{ hashFiles('scripts/fetch-assets.mjs') }}
+      - run: npm run fetch-assets
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Check the app carries arm64 native binaries
+        run: |
+          app=dist/mac-arm64/Anonymo.app
+          lipo -archs "$app/Contents/MacOS/Anonymo" | grep -qw arm64 || { echo "::error::app binary is not arm64"; exit 1; }
+          u="$app/Contents/Resources/app.asar.unpacked/node_modules"
+          for f in "$u"/@img/sharp-darwin-arm64/lib/*.node "$u"/onnxruntime-node/bin/napi-v6/darwin/arm64/onnxruntime_binding.node; do
+            [ -f "$f" ] || { echo "::error::missing $f"; exit 1; }
+            lipo -archs "$f" | grep -qw arm64 || { echo "::error::$f is not arm64"; exit 1; }
+            echo "ok: $f"
+          done
+          ls -la dist/*.dmg
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-macos
+          path: dist/*.dmg

@@ -1,6 +1,7 @@
 name: Build installers
 
 # Tags are built by release.yml, which calls this workflow and then publishes to the CDN.
+# The macOS DMG is built by build-mac.yml (separate, so a slow macOS queue never holds up Windows).
 on:
   workflow_call:
   workflow_dispatch:
@@ -16,8 +17,6 @@ jobs:
         include:
           - os: windows-latest
             target: build:win
-          - os: macos-latest
-            target: build:mac
           - os: ubuntu-latest
             target: build:linux
     runs-on: ${{ matrix.os }}
@@ -47,7 +46,6 @@ jobs:
           name: installer-${{ matrix.os }}
           path: |
             dist/*.exe
-            dist/*.dmg
             dist/*.AppImage
 
   # Microsoft Store package (MSIX/AppX). Needs the Partner Center identity values in electron-builder.yml.

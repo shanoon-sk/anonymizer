@@ -45,8 +45,12 @@ jobs:
     needs: version
     uses: ./.github/workflows/build.yml
 
+  build-mac:
+    needs: version
+    uses: ./.github/workflows/build-mac.yml
+
   publish:
-    needs: [version, build]
+    needs: [version, build, build-mac]
     runs-on: ubuntu-latest
     environment: release
     env:
