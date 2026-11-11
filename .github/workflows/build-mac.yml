@@ -52,7 +52,8 @@ jobs:
           key: assets-${{ hashFiles('scripts/fetch-assets.mjs') }}
       - run: npm run fetch-assets
       - run: npm run typecheck
-      - run: npm test
+      # No `npm test` here: onnxruntime-node has no darwin/x64 binary, so the NER model cannot load on this
+      # Intel runner. The tests run in build.yml (Windows, Linux) and ci.yml; the app ships darwin/arm64.
       - run: npm run build:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
